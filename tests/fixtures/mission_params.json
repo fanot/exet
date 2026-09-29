@@ -1,0 +1,1144 @@
+[
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": false,
+    "search_effort": "fast",
+    "optimizer": "grid"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "objective": "flight"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "temp_restrictions": "ignore"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "energy_model": "calibrated"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "wind_model": "physical"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 0,
+    "wind_dir_deg": 0,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 6.5,
+    "wind_dir_deg": 90,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 9,
+    "wind_dir_deg": 180,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 40,
+    "wind_dir_deg": 359.9,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "survey_type": "multispectral"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "survey_type": "ir"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "survey_type": "lidar"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "survey_type": "geophysics"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 1,
+        "batteries": 1
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_gemini",
+        "count": 1,
+        "batteries": 1
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_801",
+        "count": 2,
+        "batteries": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 0
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 2
+      },
+      {
+        "model": "geoscan_801",
+        "count": 0
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 10,
+        "batteries": 20
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 10,
+        "batteries": 20
+      },
+      {
+        "model": "geoscan_801",
+        "count": 10,
+        "batteries": 20
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 0,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "gsd_cm": 0.31
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_gemini",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 0,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "gsd_cm": 0.5
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 4,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "gsd_cm": 6
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 0,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "gsd_cm": 200
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "front_overlap": 0.7,
+    "side_overlap": 0.5
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_gemini",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 0,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "front_overlap": 0.95,
+    "side_overlap": 0.9,
+    "gsd_cm": 6
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 0,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "cloud_base_m": 51
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 0,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "cloud_base_m": 130
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_gemini",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 0,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "cloud_base_m": 5000
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T23:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "respect_daylight": false
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_gemini",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-12-21T09:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-06-21T12:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "min_sun_elevation_deg": 60
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_gemini",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T05:00:00Z",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "min_sun_elevation_deg": -5
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_gemini",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 0,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "reserve_pct": 60
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_gemini",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "objective": "flight",
+    "deadline_h": 0.01
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_gemini",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "objective": "flight",
+    "deadline_h": 240,
+    "respect_daylight": false
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "objective": "flight",
+    "takeoff_weight_h": 5
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "airspace_mode": "no_flight_plan"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "airspace_mode": "no_flight_plan",
+    "vlos_radius_km": 0.3,
+    "survey_type": "lidar"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 2,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "airspace_mode": "no_flight_plan",
+    "vlos_radius_km": 10,
+    "survey_type": "lidar",
+    "energy_model": "calibrated",
+    "wind_model": "physical"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "extra_sites": [
+      {
+        "lon": 38.8,
+        "lat": 55.0,
+        "name": "QA-center"
+      }
+    ]
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "extra_sites": [
+      {
+        "lon": 30.0,
+        "lat": 60.0,
+        "name": "QA-remote"
+      }
+    ]
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "extra_sites": [
+      {
+        "lon": 38.8,
+        "lat": 55.0,
+        "name": "QA-duplicate"
+      },
+      {
+        "lon": 38.9,
+        "lat": 55.1,
+        "name": "QA-duplicate"
+      }
+    ]
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "normal",
+    "optimizer": "grid",
+    "survey_type": "lidar"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "thorough",
+    "optimizer": "grid",
+    "survey_type": "lidar"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "bayes"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "normal",
+    "optimizer": "bayes",
+    "survey_type": "lidar"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 0,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "thorough",
+    "optimizer": "bayes",
+    "survey_type": "ir",
+    "gsd_cm": 200
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ]
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_gemini",
+        "count": 4,
+        "batteries": 3
+      }
+    ],
+    "start_time": "2026-06-25T12:00:00+03:00",
+    "wind_speed_ms": 2,
+    "wind_dir_deg": 270,
+    "use_terrain": true,
+    "search_effort": "normal",
+    "optimizer": "bayes",
+    "survey_type": "lidar",
+    "gsd_cm": 5,
+    "front_overlap": 0.85,
+    "side_overlap": 0.6,
+    "objective": "flight",
+    "deadline_h": 240,
+    "takeoff_weight_h": 0.5,
+    "cloud_base_m": 500,
+    "respect_daylight": true,
+    "min_sun_elevation_deg": 5,
+    "energy_model": "calibrated",
+    "wind_model": "physical",
+    "temp_restrictions": "ignore",
+    "airspace_mode": "no_flight_plan",
+    "vlos_radius_km": 5,
+    "reserve_pct": 30,
+    "extra_sites": [
+      {
+        "lon": 38.8,
+        "lat": 55.0,
+        "name": "QA-combined"
+      }
+    ]
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_801",
+        "count": 3,
+        "batteries": 2
+      }
+    ],
+    "start_time": "2026-09-25T23:00:00+03:00",
+    "wind_speed_ms": 3,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "bayes",
+    "survey_type": "ir",
+    "gsd_cm": 50,
+    "airspace_mode": "no_flight_plan",
+    "vlos_radius_km": 5,
+    "respect_daylight": false,
+    "cloud_base_m": 200,
+    "reserve_pct": 40,
+    "energy_model": "calibrated"
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_201",
+        "count": 2
+      },
+      {
+        "model": "geoscan_gemini",
+        "count": 4
+      },
+      {
+        "model": "geoscan_801",
+        "count": 2
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "survey_type": "lidar",
+    "front_overlap": 0.5,
+    "side_overlap": 0.0,
+    "gsd_cm": 3
+  },
+  {
+    "fleet": [
+      {
+        "model": "geoscan_gemini",
+        "count": 20,
+        "batteries": 20
+      }
+    ],
+    "start_time": "2026-09-25T08:00:00+03:00",
+    "wind_speed_ms": 5,
+    "wind_dir_deg": 250,
+    "use_terrain": true,
+    "search_effort": "fast",
+    "optimizer": "grid",
+    "survey_type": "lidar"
+  }
+]

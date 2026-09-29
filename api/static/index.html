@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Geoscan Fleet Planner</title>
+<meta name="description" content="Планирование и распределение авиационных работ группы БВС Геоскан: галсы, вылеты, расписание, 4D-разведение, экспорт KML/GeoJSON.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232563eb'/><path d='M8 20l8-12 8 12M11 16h10' stroke='white' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/static/style.css?v=20260928-2">
+</head>
+<body>
+<div id="app">
+  <!-- Верхняя панель: сценарий слева, критерий и главное действие справа -->
+  <header class="topbar">
+    <div class="brand" title="Geoscan Fleet Planner">
+      <div class="logo" aria-hidden="true"></div>
+      <div class="brand-txt">
+        <div class="brand-name">Fleet Planner</div>
+        <div class="brand-sub">Геоскан · авиаработы группы БВС</div>
+      </div>
+    </div>
+
+    <div class="scn">
+      <label class="field-inline" title="Сценарий: демо или загруженные файлы">
+        <span class="ico" data-i="map"></span>
+        <select id="scenario" aria-label="Сценарий"></select>
+      </label>
+      <label class="btn btn-ghost" title="Загрузить GeoJSON/KML — можно несколько файлов-слоев (область, зоны, препятствия) или перетащить их на карту">
+        <span class="ico" data-i="upload"></span><span class="hide-md">Загрузить</span>
+        <input type="file" id="file" accept=".geojson,.json,.kml" multiple hidden>
+      </label>
+    </div>
+
+    <div class="grow"></div>
+
+    <div class="segmented" role="radiogroup" aria-label="Критерий оптимизации" id="objective">
+      <button role="radio" data-v="time" aria-checked="true" title="Минимизировать время выполнения всей миссии"><span class="ico" data-i="clock"></span><span class="l">Минимум времени</span><span class="s">Время</span></button>
+      <button role="radio" data-v="flight" aria-checked="false" title="Минимизировать суммарный налет (износ техники)"><span class="ico" data-i="battery"></span><span class="l">Минимум налета</span><span class="s">Налет</span></button>
+    </div>
+    <button id="compare" class="btn btn-ghost" title="Рассчитать оба критерия и сравнить"><span class="ico" data-i="compare"></span><span class="hide-lg">Сравнить</span></button>
+    <button id="run" class="btn btn-primary" title="Рассчитать план (⌘/Ctrl + Enter)"><span class="ico" data-i="play"></span><span>Рассчитать</span><kbd class="hide-md">⌘↵</kbd></button>
+    <div class="icon-group">
+      <a class="btn btn-icon btn-ghost" href="/docs" target="_blank" rel="noopener" title="REST API (Swagger)"><span class="ico" data-i="code"></span></a>
+      <button id="help" class="btn btn-icon btn-ghost" title="Горячие клавиши (?)"><span class="ico" data-i="keyboard"></span></button>
+      <button id="theme" class="btn btn-icon btn-ghost" title="Светлая / темная тема"><span class="ico" data-i="moon"></span></button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <aside class="panel" id="panel">
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="task" aria-selected="true"><span class="ico" data-i="sliders"></span>Задание</button>
+        <button role="tab" data-tab="result" aria-selected="false"><span class="ico" data-i="route"></span>Результат <span class="badge" id="res-badge" hidden></span></button>
+        <button role="tab" data-tab="history" aria-selected="false"><span class="ico" data-i="history"></span>История</button>
+      </nav>
+
+      <!-- ЗАДАНИЕ -->
+      <section class="tab-body" id="tab-task">
+        <div class="scenario-card" id="scenario-card"></div>
+
+        <details class="step" open>
+          <summary><span class="step-n">1</span><span class="step-t">Парк БВС</span><span class="step-s" id="sum-fleet"></span></summary>
+          <div class="step-body" id="fleet"></div>
+        </details>
+
+        <details class="step" open>
+          <summary><span class="step-n">2</span><span class="step-t">Съемка</span><span class="step-s" id="sum-survey"></span></summary>
+          <div class="step-body">
+            <div class="label">Тип съемки</div>
+            <div class="chips" id="survey_type" role="radiogroup">
+              <button data-v="rgb" aria-checked="true">RGB</button>
+              <button data-v="multispectral" aria-checked="false">Мультиспектр</button>
+              <button data-v="ir" aria-checked="false">ИК</button>
+              <button data-v="lidar" aria-checked="false">Лидар</button>
+              <button data-v="geophysics" aria-checked="false">Геофизика</button>
+            </div>
+            <div class="grid2">
+              <label class="field"><span class="label">GSD</span>
+                <span class="input-unit"><input type="number" id="gsd_cm" step="any" min="0.3000001" max="200" placeholder="3.0"><span>см/пикс</span></span></label>
+              <label class="field"><span class="label" title="Нижняя граница облачности">Облачность от</span>
+                <span class="input-unit"><input type="number" id="cloud" placeholder="нет"><span>м</span></span></label>
+            </div>
+            <label class="field"><span class="label">Продольное перекрытие <b id="front-v">70%</b></span>
+              <input type="range" id="front" min="70" max="95" step="any" value="70"></label>
+            <label class="field"><span class="label">Поперечное перекрытие <b id="side-v">50%</b></span>
+              <input type="range" id="side" min="50" max="90" step="any" value="50"></label>
+          </div>
+        </details>
+
+        <details class="step" open>
+          <summary><span class="step-n">3</span><span class="step-t">Условия</span><span class="step-s" id="sum-cond"></span></summary>
+          <div class="step-body">
+            <div class="wind">
+              <div class="compass" id="compass" role="slider" aria-label="Направление ветра (откуда дует)" tabindex="0">
+                <svg viewBox="0 0 120 120">
+                  <circle cx="60" cy="60" r="54" class="c-ring"/>
+                  <g class="c-ticks"></g>
+                  <text x="60" y="17" class="c-lbl">С</text><text x="106" y="64" class="c-lbl">В</text>
+                  <text x="60" y="111" class="c-lbl">Ю</text><text x="14" y="64" class="c-lbl">З</text>
+                  <g id="c-arrow"><line x1="60" y1="22" x2="60" y2="92" class="c-shaft"/><path d="M60 98 l-7 -12 h14z" class="c-head"/><circle cx="60" cy="22" r="4" class="c-tail"/></g>
+                </svg>
+              </div>
+              <div class="wind-fields">
+                <div class="label">Ветер у земли</div>
+                <div class="wind-val"><b id="wind-v">5.0</b> м/с · откуда <b id="wdir-v">250°</b></div>
+                <input type="range" id="wind" min="0" max="40" step="any" value="5" aria-label="Скорость ветра">
+                <div class="hint">Перетащите стрелку. На рабочей высоте ветер сильнее — сервис учтет профиль.</div>
+              </div>
+            </div>
+            <div class="label">Учет ветра</div>
+            <div class="chips" id="wind_model" role="radiogroup">
+              <button data-v="qa" aria-checked="true">По методике QA</button>
+              <button data-v="physical" aria-checked="false">Физическая модель</button>
+            </div>
+            <div class="hint" id="wind-hint"></div>
+            <div class="label">Воздушное пространство</div>
+            <div class="chips" id="airspace_mode" role="radiogroup">
+              <button data-v="flight_plan" aria-checked="true">С планом полета · до 700 м</button>
+              <button data-v="no_flight_plan" aria-checked="false">Без плана · до 150 м</button>
+            </div>
+            <div class="hint" id="airspace-hint"></div>
+            <div class="label">Временные ограничения без времени действия</div>
+            <div class="chips" id="temp_restrictions" role="radiogroup">
+              <button data-v="active" aria-checked="true">Считать действующими</button>
+              <button data-v="ignore" aria-checked="false">Не учитывать</button>
+            </div>
+            <div class="hint" id="temp-hint"></div>
+            <label class="field" id="vlos-field" hidden><span class="label">Прямая видимость — удаление от площадки</span>
+              <span class="input-unit"><input type="number" id="vlos_km" min="0.3" max="10" step="0.1" value="2"><span>км</span></span></label>
+            <label class="field"><span class="label">Начало работ <span class="hint" id="tz-label" title="Часовой пояс района работ: из сценария или по долготе">UTC+03:00</span></span><input type="datetime-local" id="start" step="any"></label>
+            <label class="switch"><input type="checkbox" id="daylight" checked><span></span>Учитывать светлое время</label>
+            <div class="grid2">
+              <label class="field"><span class="label">Солнце не ниже</span><span class="input-unit"><input type="number" id="min_sun" min="-5" max="60" step="any" value="10"><span>°</span></span></label>
+              <label class="field"><span class="label">Резерв АКБ</span><span class="input-unit"><input type="number" id="reserve_pct" min="20" max="60" step="any" value="20"><span>%</span></span></label>
+            </div>
+            <label class="switch"><input type="checkbox" id="terrain" checked><span></span>Учитывать рельеф (ЦМР)</label>
+          </div>
+        </details>
+
+        <details class="step">
+          <summary><span class="step-n">4</span><span class="step-t">Оптимизация</span><span class="step-s" id="sum-opt"></span></summary>
+          <div class="step-body">
+            <div class="grid2">
+              <label class="field"><span class="label">Срок выполнения</span>
+                <span class="input-unit"><input type="number" id="deadline" min="0.000001" max="240" step="any" placeholder="нет"><span>ч</span></span></label>
+              <label class="field"><span class="label">Глубина поиска</span>
+                <select id="effort"><option value="fast">Быстро</option><option value="normal" selected>Нормально</option><option value="thorough">Тщательно</option></select></label>
+            </div>
+            <div class="hint">«Минимум налета» со сроком — налет минимизируется при ограничении на длительность работ.</div>
+            <label class="field"><span class="label">Стоимость взлёта при минимизации налёта</span><span class="input-unit"><input type="number" id="takeoff_weight" min="0" max="5" step="any" value="0"><span>ч</span></span></label>
+            <button class="btn btn-sm advise-btn" id="advise" title="Сколько бортов из доступного парка нужно, чтобы уложиться в срок"><span class="ico" data-i="sparkle"></span>Подобрать парк к сроку</button>
+            <div id="advice"></div>
+            <div class="label">Метод поиска параметров плана</div>
+            <div class="chips" id="optimizer" role="radiogroup">
+              <button data-v="bayes" aria-checked="true">Байесовская оптимизация</button>
+              <button data-v="grid" aria-checked="false">Сетка</button>
+            </div>
+            <div class="hint" id="opt-hint"></div>
+            <div class="label">Модель расхода АКБ</div>
+            <div class="chips" id="energy_model" role="radiogroup">
+              <button data-v="linear" aria-checked="true">Линейная (по времени)</button>
+              <button data-v="calibrated" aria-checked="false">По телеметрии</button>
+            </div>
+            <div class="hint" id="energy-hint"></div>
+          </div>
+        </details>
+        <div class="task-foot" id="task-foot">
+          <div class="tf-sum" id="tf-sum"></div>
+          <button class="btn btn-primary" id="run2"><span class="ico" data-i="play"></span>Рассчитать план</button>
+        </div>
+      </section>
+
+      <!-- РЕЗУЛЬТАТ -->
+      <section class="tab-body" id="tab-result" hidden>
+        <div class="empty" id="result-empty">
+          <div class="empty-ico ico" data-i="route"></div>
+          <div class="empty-t">Плана пока нет</div>
+          <div class="hint">Задайте парк и условия, затем нажмите «Рассчитать».</div>
+        </div>
+        <div id="result"></div>
+      </section>
+
+      <!-- ИСТОРИЯ -->
+      <section class="tab-body" id="tab-history" hidden>
+        <div id="history"></div>
+        <div id="cmp"></div>
+      </section>
+    </aside>
+
+    <main class="stage" id="stage">
+      <div id="map" aria-label="Карта"></div>
+
+      <div class="float float-tr" id="layers-box">
+        <button class="btn btn-icon float-btn" id="layers-btn" title="Слои и раскраска карты"><span class="ico" data-i="layers"></span></button>
+        <button class="btn btn-icon float-btn" id="add-site" title="Поставить площадку взлета/посадки кликом по карте"><span class="ico" data-i="sitePlus"></span></button>
+        <div class="layers-pop glass" id="layers-pop" hidden>
+          <div class="label">Подложка</div>
+          <div class="chips small" id="basemap">
+            <button data-v="map" aria-checked="true">Схема</button>
+            <button data-v="sat" aria-checked="false">Спутник</button>
+            <button data-v="topo" aria-checked="false">Рельеф</button>
+          </div>
+          <div class="label">Раскраска маршрутов</div>
+          <div class="chips small" id="colormode">
+            <button data-v="drone" aria-checked="true">Борта</button>
+            <button data-v="model" aria-checked="false">Типы БВС</button>
+            <button data-v="phase" aria-checked="false">Этапы</button>
+          </div>
+          <div class="label">Слои</div>
+          <div id="overlay-list"></div>
+          <div class="label">Условные обозначения</div>
+          <div class="legend" id="legend"></div>
+        </div>
+      </div>
+
+      <!-- ход расчета: этапы, сходимость оптимизатора, отмена -->
+      <section class="run-panel glass" id="run-panel" hidden aria-live="polite">
+        <div class="rp-head">
+          <div class="spinner" id="rp-spin"></div>
+          <div class="rp-title-box"><div class="rp-title" id="rp-title">Расчет плана</div><div class="rp-msg" id="rp-msg">…</div></div>
+          <div class="rp-time" id="rp-time">0 с</div>
+          <button class="btn btn-sm btn-ghost" id="rp-cancel" title="Отменить расчет (Esc)">Отменить</button>
+        </div>
+        <ol class="stages" id="rp-stages"></ol>
+        <div class="rp-chart" id="rp-chart"></div>
+        <div class="rp-bar"><div id="rp-fill"></div></div>
+      </section>
+
+      <!-- подсказка первого запуска -->
+      <div class="map-hint glass" id="map-hint" hidden>
+        <div class="mh-ico ico" data-i="sparkle"></div>
+        <div><div class="mh-t">Сценарий на карте. Дальше — один клик</div>
+          <div class="hint">Парк и условия уже заданы. Расчет займет <span id="hint-eta">10–30 секунд</span>: сетка галсов, распределение площади между бортами, расписание, 4D-разведение и независимая проверка.</div>
+          <button class="btn btn-primary btn-sm" id="hint-run"><span class="ico" data-i="play"></span>Рассчитать план</button></div>
+        <button class="eye mh-x" id="hint-x" title="Скрыть"><span class="ico" data-i="x"></span></button>
+      </div>
+
+      <!-- инспектор выбранного вылета -->
+      <section class="inspector glass" id="inspector" hidden aria-label="Вылет"></section>
+
+      <div class="toasts" id="toasts" aria-live="polite"></div>
+
+      <section class="dock" id="dock" hidden>
+        <div class="dock-head">
+          <button class="btn btn-icon" id="play" title="Воспроизвести (пробел)"><span class="ico" data-i="play"></span></button>
+          <div class="clock"><div id="clock-t">—</div><div class="hint" id="clock-d"></div></div>
+          <div class="chips small" id="speed" title="Скорость воспроизведения">
+            <button data-v="60" aria-checked="false">×60</button>
+            <button data-v="300" aria-checked="true">×300</button>
+            <button data-v="1200" aria-checked="false">×1200</button>
+            <button data-v="3600" aria-checked="false">×3600</button>
+          </div>
+          <input type="range" id="slider" min="0" max="1000" value="0" aria-label="Время">
+          <div class="dock-live" id="dock-live"></div>
+          <button class="btn btn-icon btn-ghost" id="dock-toggle" title="Свернуть расписание"><span class="ico" data-i="chev"></span></button>
+        </div>
+        <div class="gantt" id="gantt"></div>
+        <div class="g-tip" id="g-tip" hidden></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-back" id="help-pop" hidden>
+    <div class="modal glass" role="dialog" aria-label="Горячие клавиши">
+      <div class="modal-h">Горячие клавиши<button class="eye" id="help-x" title="Закрыть"><span class="ico" data-i="x"></span></button></div>
+      <dl class="keys">
+        <dt><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>Enter</kbd></dt><dd>Рассчитать план</dd>
+        <dt><kbd>Пробел</kbd></dt><dd>Воспроизвести / пауза</dd>
+        <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Предыдущий / следующий вылет</dd>
+        <dt><kbd>Esc</kbd></dt><dd>Снять выделение, закрыть окна, отменить расчет</dd>
+        <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>Вкладки: задание, результат, история</dd>
+        <dt><kbd>F</kbd></dt><dd>Вписать район работ</dd>
+        <dt><kbd>?</kbd></dt><dd>Эта подсказка</dd>
+      </dl>
+      <div class="hint">Файлы сценария (GeoJSON, KML, несколько слоев сразу) можно перетащить на карту.</div>
+    </div>
+  </div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/app.js?v=20260929-2"></script>
+</body>
+</html>

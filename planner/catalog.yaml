@@ -1,0 +1,189 @@
+# Каталог БВС, полезных нагрузок и типов съемки.
+# Источник чисел — ТТХ из материалов задачи (drons_specs/*.pdf) и QA-сессия.
+# Поля с ключом `assumption` не указаны в ТТХ явно — это наши инженерные допущения,
+# их можно поменять здесь без правки кода.
+
+global:
+  reserve_pct: 20              # QA: аварийный порог остатка энергии 20%
+  corridor_max_agl_m: 700      # QA: вертикальный коридор разведения до ~700 м
+  vertical_sep_m: 30           # минимальное вертикальное разведение бортов
+  layer_step_m: 35             # шаг эшелонов перелета (> вертикального разведения)
+  obstacle_v_clearance_m: 30   # запас по высоте над высотным препятствием
+  obstacle_h_buffer_m: 30      # горизонтальный буфер вокруг высотного препятствия
+  setup_min: 20                # развертывание расчета на площадке перед первым вылетом
+  ground_speed_kmh: 40         # переезд расчета между площадками
+  relocation_pack_min: 15      # сборка/разборка при переезде
+  terrain_step_m: 25           # QA: шаг опроса ЦМР 20–30 м
+  min_sun_elevation_deg: 10    # съемка не на рассвете/закате (длинные тени)
+  wind_shear_alpha: 0.143      # степенной профиль ветра (Хеллман), замер на 10 м
+
+survey_types:
+  rgb:
+    title: "RGB (аэрофотосъемка)"
+    kind: camera
+    gsd_cm: 3.0
+    front_overlap: 0.70        # QA: продольное от 70%
+    side_overlap: 0.50         # QA: поперечное от 50%
+  multispectral:
+    title: "Мультиспектральная"
+    kind: camera
+    gsd_cm: 8.0
+    front_overlap: 0.75
+    side_overlap: 0.60
+  ir:
+    title: "Инфракрасная (тепловизионная)"
+    kind: camera
+    gsd_cm: 15.0
+    front_overlap: 0.70
+    side_overlap: 0.50
+  lidar:
+    title: "Лидарная"
+    kind: lidar
+    altitude_m: 100
+    side_overlap: 0.30
+    point_density_m2: 50
+  geophysics:
+    title: "Геофизическая (аэромагниторазведка)"
+    kind: fixed
+    altitude_m: 50
+    line_spacing_m: 50
+
+sensors:
+  sony_rx1rm2:
+    title: "Sony DSC-RX1RM2 (полный кадр, 42 Мп, F=35 мм)"
+    kind: camera
+    sensor_w_mm: 35.9
+    sensor_h_mm: 24.0
+    px_w: 7952
+    px_h: 5304
+    focal_mm: 35.0
+    min_trigger_s: 1.0
+    exposure_s: 0.0005
+  pf1b:
+    title: "Geoscan PF1B (APS-C, 24 Мп, F=20 мм)"
+    kind: camera
+    sensor_w_mm: 23.5
+    sensor_h_mm: 15.6
+    px_w: 6000
+    px_h: 4000
+    focal_mm: 20.0
+    min_trigger_s: 1.0
+    exposure_s: 0.0005
+  pollux:
+    title: "Geoscan Pollux (5 каналов, 1440×1080, F=8 мм)"
+    kind: camera
+    sensor_w_mm: 4.968
+    sensor_h_mm: 3.726
+    px_w: 1440
+    px_h: 1080
+    focal_mm: 8.0
+    min_trigger_s: 1.0
+    exposure_s: 0.001
+  cam801:
+    title: "Камера 801 (1/2.3\", 12 Мп, F=4.35 мм)"
+    kind: camera
+    sensor_w_mm: 6.17
+    sensor_h_mm: 4.55
+    px_w: 4000
+    px_h: 3000
+    focal_mm: 4.35
+    min_trigger_s: 2.0
+    exposure_s: 0.001
+    assumption: "размер матрицы 1/2.3\" = 6.17×4.55 мм, интервал съемки 2 с"
+  thermal801:
+    title: "Тепловизор 801 (640×512, F=9.1 мм)"
+    kind: camera
+    sensor_w_mm: 7.68
+    sensor_h_mm: 6.144
+    px_w: 640
+    px_h: 512
+    focal_mm: 9.1
+    min_trigger_s: 0.5
+    exposure_s: 0.008
+    assumption: "шаг пикселя 12 мкм; постоянная времени микроболометра ~8 мс"
+  lidar_generic:
+    title: "Лидар (типовой, FOV 70°)"
+    kind: lidar
+    fov_deg: 70
+    points_per_s: 240000
+    assumption: "в линейке задачи лидара нет — типовой сенсор для демонстрации"
+  magnetometer:
+    title: "Квантовый магнитометр (типовой)"
+    kind: fixed
+    speed_ms: 8
+    assumption: "в линейке задачи магнитометра нет — типовой сенсор для демонстрации"
+
+drones:
+  geoscan_201:
+    title: "Геоскан 201"
+    type: fixed_wing
+    endurance_min: 180          # ТТХ: макс. продолжительность 180 мин
+    max_route_km: 210           # ТТХ: макс. протяженность маршрута 210 км
+    cruise_ms: 22.0             # ~80 км/ч
+    airspeed_min_ms: 17.8       # ТТХ: 64 км/ч
+    airspeed_max_ms: 36.1       # ТТХ: 130 км/ч
+    max_speed_ms: 36.1
+    max_wind_ms: 12             # ТТХ
+    min_alt_agl_m: 100          # ТТХ: мин. безопасная высота
+    obstacle_v_clearance_m: 100 # руководство 201, стр. 11: 100 м над рельефом и высотными объектами
+    max_alt_agl_m: 700
+    climb_ms: 3.0
+    sink_ms: 4.0
+    bank_deg: 30
+    launch_s: 30
+    parachute_alt_m: 100
+    parachute_ms: 5.0
+    turnaround_min: 25          # укладка парашюта, замена АКБ, выгрузка снимков
+    charge_min: 240             # 40 А·ч при 10 А
+    batteries: 3
+    separation_m: 150           # QA: самолет «висит» по кругу — больший радиус
+    maintenance_flights: 80     # ответы организаторов: ТО 201/401 — каждые 80 полетов
+    nofly_buffer_m: 200         # защитная зона маневрирования (разворот + ошибка)
+    payloads:
+      rgb: sony_rx1rm2
+      multispectral: pollux
+  geoscan_gemini:
+    title: "Геоскан Gemini"
+    type: multirotor
+    endurance_min: 40           # ТТХ
+    cruise_ms: 12.0
+    max_speed_ms: 15.0          # ТТХ: горизонтальная 15 м/с
+    max_wind_ms: 10             # ТТХ
+    min_alt_agl_m: 20
+    max_alt_agl_m: 500          # ТТХ: 500 м AGL
+    climb_ms: 5.0               # ТТХ: вертикальная 5 м/с
+    sink_ms: 3.0
+    accel_ms2: 2.0
+    turnaround_min: 8
+    charge_min: 105             # ТТХ зарядного устройства
+    batteries: 4
+    maintenance_hours: 160      # допущение: интервал для Gemini организаторы не назвали — как у 801
+    maintenance_note: "интервал ТО Gemini не указан организаторами — принят как у 801 (160 ч)"
+    separation_m: 50            # QA: к коптеру можно ближе, ~50 м
+    nofly_buffer_m: 40
+    payloads:
+      rgb: pf1b
+      multispectral: pollux
+      lidar: lidar_generic
+      geophysics: magnetometer
+  geoscan_801:
+    title: "Геоскан 801"
+    type: multirotor
+    endurance_min: 40           # ТТХ
+    cruise_ms: 12.0
+    max_speed_ms: 15.0          # ТТХ
+    max_wind_ms: 10             # ТТХ
+    min_alt_agl_m: 20
+    max_alt_agl_m: 500          # инженерное ограничение; в PDF 801 указан только предел 4000 м AMSL
+    climb_ms: 5.0
+    sink_ms: 3.0
+    accel_ms2: 2.0
+    turnaround_min: 8
+    charge_min: 120             # ТТХ пульта: 2 ч; для АКБ борта принято так же
+    batteries: 4                # базовый комплект — 2 АКБ; +2 докупаются
+    maintenance_hours: 160      # ответы организаторов: ТО 501/801 — каждые 160 ч налета
+    separation_m: 50
+    nofly_buffer_m: 40
+    payloads:
+      rgb: cam801
+      ir: thermal801

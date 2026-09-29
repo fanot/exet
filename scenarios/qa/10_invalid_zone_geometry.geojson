@@ -1,0 +1,71 @@
+{
+  "type": "FeatureCollection",
+  "name": "QA-B01: ошибочная геометрия зоны",
+  "planning_hint": {
+    "start_time": "2026-09-25T09:00:00+03:00"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "survey_area",
+        "name": "Участок"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              38.00781234401152,
+              54.99550833406419
+            ],
+            [
+              38.00781408955882,
+              55.004491160886225
+            ],
+            [
+              37.99218591044119,
+              55.004491160886225
+            ],
+            [
+              37.99218765598849,
+              54.99550833406419
+            ],
+            [
+              38.00781234401152,
+              54.99550833406419
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "site",
+        "name": "S"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          37.98984281835593,
+          54.99999957605307
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "no_fly",
+        "name": "Зона-точка"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          38.0,
+          55.0
+        ]
+      }
+    }
+  ]
+}

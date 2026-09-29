@@ -1,0 +1,18 @@
+services:
+  planner:
+    build:
+      context: .
+      args:
+        # если Docker Hub недоступен: BASE_IMAGE=mirror.gcr.io/library/python:3.11-slim docker compose up --build
+        BASE_IMAGE: ${BASE_IMAGE:-python:3.11-slim}
+    image: geoscan-fleet-planner:1.0
+    ports:
+      - "8000:8000"
+    environment:
+      DATA_DIR: /data
+      DEM_CACHE_DIR: /data/dem_cache
+    volumes:
+      - planner-data:/data   # история планов и кэш ЦМР
+    restart: unless-stopped
+volumes:
+  planner-data:

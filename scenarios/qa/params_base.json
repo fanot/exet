@@ -1,0 +1,32 @@
+{
+  "survey_type": "rgb",
+  "gsd_cm": null,
+  "front_overlap": null,
+  "side_overlap": null,
+  "fleet": [
+    {
+      "model": "geoscan_gemini",
+      "count": 2,
+      "batteries": null
+    }
+  ],
+  "objective": "time",
+  "deadline_h": null,
+  "takeoff_weight_h": 0.0,
+  "start_time": "2026-09-25T09:00:00+03:00",
+  "wind_speed_ms": 0.0,
+  "wind_dir_deg": 270.0,
+  "cloud_base_m": null,
+  "respect_daylight": true,
+  "min_sun_elevation_deg": 10.0,
+  "use_terrain": false,
+  "energy_model": "linear",
+  "wind_model": "qa",
+  "temp_restrictions": "active",
+  "airspace_mode": "flight_plan",
+  "vlos_radius_km": 2.0,
+  "reserve_pct": 20.0,
+  "extra_sites": [],
+  "search_effort": "fast",
+  "optimizer": "grid"
+}
