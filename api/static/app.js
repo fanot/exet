@@ -31,12 +31,14 @@ const ICONS = {
   moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/>',
+  expand: '<path d="M8 3H3v5m0-5 6 6m7-6h5v5m0-5-6 6M3 16v5h5m-5 0 6-6m12 1v5h-5m5 0-6-6"/>',
   chev: '<path d="m6 9 6 6 6-6"/>',
   chevL: '<path d="m15 6-6 6 6 6"/>',
   chevR: '<path d="m9 6 6 6-6 6"/>',
   check: '<path d="m5 12 5 5 9-10"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>',
   alert: '<path d="M12 4 2.5 20h19L12 4Z"/><path d="M12 10v4m0 3h.01"/>',
+  ban: '<circle cx="12" cy="12" r="9"/><path d="M7.5 12h9"/>',
   ok: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
   route: '<circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5"/>',
   plane: '<path d="M2 13l9-2 3-7h2l-1 7 7 1v2l-7 1 1 5h-2l-3-5-9-2Z"/>',
@@ -72,13 +74,17 @@ const STAGES = [["prepare", "Данные"], ["slicing", "Галсы"], ["alloca
 
 const S = {
   catalog: null, scenario: null, scenarioId: null, plan: null, extraSites: [], layers: {}, markers: {}, colors: {},
-  hidden: new Set(), t: 0, t0: 0, t1: 0, playing: false, sel: null, fleet: {}, bats: {}, colorMode: "drone",
+  hidden: new Set(), showOtherDrones: false, showFutureRoutes: false, t: 0, t0: 0, t1: 0, playing: false, sel: null, fleet: {}, bats: {}, colorMode: "drone",
   objective: "time", airspace: "flight_plan", energy: "linear", wind: "qa", temp: "active", addSite: false, tzStart: 180, optimizer: "bayes", survey: "rgb",
-  windDir: 250, speed: 300, basemap: "map", sortieFilter: "", job: null, cmp: null, routeLines: {},
+  windDir: 250, speed: 300, basemap: "map", sortieFilter: "", job: null, cmp: null, routeLines: {}, futureLines: {}, progress: null, coverageShown: 0,
+  timelineEvents: [], timelineGroups: [], highlightedEvent: null, timelineDrone: "", routeFocus: null,
   revision: 0, animationFrame: null, cancelRequested: false, frontDefault: true, sideDefault: true,
 };
-const store = { get(k, d) { try { const v = localStorage.getItem("gfp." + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem("gfp." + k, JSON.stringify(v)); } catch (e) {} } };
+const objectiveName = (value) => ({time: "Минимум времени", flight: "Минимум налёта", balanced: "Баланс"}[value] || value);
+let storageScope = "pending";
+const storageKey = (k) => "gfp." + (k === "theme" || k === "onboarding.attempts" ? "" : storageScope + ".") + k;
+const store = { get(k, d) { try { const v = localStorage.getItem(storageKey(k)); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(storageKey(k), JSON.stringify(v)); } catch (e) {} } };
 
 // ================================================================ тема
 function applyTheme(t) {
@@ -90,9 +96,27 @@ $("#theme").addEventListener("click", () => { const t = document.documentElement
 
 // ================================================================ карта
 const map = L.map("map", { zoomControl: false, attributionControl: false, zoomSnap: 0.25, zoomDelta: 0.5, preferCanvas: false }).setView([60.15, 30.5], 11);
+function setPanelVisible(visible, remember = true) {
+  $("#panel").hidden = !visible;
+  $(".workspace").classList.toggle("panel-hidden", !visible);
+  const button = $("#panel-toggle");
+  button.setAttribute("aria-expanded", String(visible));
+  button.title = visible ? "Скрыть левую панель" : "Показать левую панель";
+  button.innerHTML = `${ico(visible ? "chevL" : "chevR")}${visible ? "Скрыть панель" : "Показать панель"}`;
+  if (remember) store.set("panel.collapsed", !visible);
+  requestAnimationFrame(() => { map.invalidateSize(); if (!S.userMoved) fitScenario(); });
+}
+$("#panel-toggle").addEventListener("click", () => setPanelVisible($("#panel").hidden));
 L.control.attribution({ prefix: '<a href="https://leafletjs.com">Leaflet</a>' }).addTo(map);
 L.control.zoom({ position: "bottomright" }).addTo(map);
 L.control.scale({ imperial: false, position: "bottomright" }).addTo(map);
+map.createPane("coveragePane").style.zIndex = 420;
+const routePane = map.createPane("routePane");
+routePane.style.zIndex = 450;
+routePane.style.pointerEvents = "none";
+routePane.classList.add("route-hit-pane");
+const coverageR = L.svg({ pane: "coveragePane" });
+const routeR = L.svg({ pane: "routePane", padding: 0.5 });
 const canvasR = L.canvas({ padding: 0.5, tolerance: 7 });
 const BASE = {
   light: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap", className: "tiles-light" }),
@@ -108,8 +132,16 @@ function setBasemap(v) {
   if (curBase) map.removeLayer(curBase);
   curBase = layer.addTo(map); layer.bringToBack();
 }
-const OVERLAYS = [["scenario", "Исходные данные"], ["routes", "Маршруты"], ["uncovered", "Непокрытые участки"], ["recs", "Площадки: рекомендованные и добавленные"],
-  ["checks", "Точки проверки (crash-тест)"], ["drones", "Борта (анимация)"]];
+const OVERLAYS = [
+  ["scenario", "Данные участка", "Область съёмки, запреты и препятствия", "Участок"],
+  ["recs", "Площадки", "Точки взлёта и посадки", "Участок"],
+  ["routes", "Пройденный путь", "Маршруты до выбранного времени", "Полёты"],
+  ["future", "Будущий путь", "Оставшаяся часть маршрутов", "Полёты"],
+  ["drones", "Борта", "Положение в выбранный момент", "Полёты"],
+  ["coverage", "Отснято по плану", "Площадь съёмки к выбранному времени", "Результат"],
+  ["uncovered", "Непокрытые участки", "Пробелы после расчёта", "Результат"],
+  ["checks", "Точки проверки", "Контрольные точки плана", "Результат"],
+];
 function setLayer(name, layer) {
   if (S.layers[name]) map.removeLayer(S.layers[name]);
   S.layers[name] = layer;
@@ -118,31 +150,65 @@ function setLayer(name, layer) {
 }
 function dropLayer(name) { if (S.layers[name]) { map.removeLayer(S.layers[name]); delete S.layers[name]; } }
 function renderOverlayList() {
-  $("#overlay-list").innerHTML = OVERLAYS.filter(([k]) => S.layers[k]).map(([k, t]) =>
-    `<label class="ov"><input type="checkbox" data-k="${k}" ${map.hasLayer(S.layers[k]) ? "checked" : ""}>${t}</label>`).join("") || '<div class="hint">Нет слоев</div>';
+  const focusedKey = document.activeElement?.matches?.("#overlay-list input[data-k]") ? document.activeElement.dataset.k : null;
+  const available = OVERLAYS.filter(([k]) => S.layers[k]);
+  const active = available.filter(([k]) => map.hasLayer(S.layers[k])).length;
+  $("#overlay-count").textContent = `${active} из ${available.length}`;
+  $("#overlay-list").innerHTML = ["Участок", "Полёты", "Результат"].map(group => {
+    const rows = available.filter(([, , , g]) => g === group);
+    if (!rows.length) return "";
+    return `<div class="layers-group"><div class="layers-group-title">${group}</div>${rows.map(([k, t, desc]) =>
+      `<label class="layers-overlay"><span class="layers-overlay-copy"><strong>${t}</strong><small>${desc}</small></span><input type="checkbox" data-k="${k}" ${map.hasLayer(S.layers[k]) ? "checked" : ""}><span class="layers-switch" aria-hidden="true"></span></label>`).join("")}</div>`;
+  }).join("") || '<div class="layers-empty">Слои появятся после выбора участка или расчёта.</div>';
+  if (focusedKey) $("#overlay-list").querySelector(`input[data-k="${focusedKey}"]`)?.focus();
   $$("#overlay-list input").forEach((i) => i.addEventListener("change", () => {
+    if (i.dataset.k === "future") { setFutureRoutes(i.checked); return; }
     const l = S.layers[i.dataset.k];
     if (i.checked) l.addTo(map); else map.removeLayer(l);
     store.set("off." + i.dataset.k, !i.checked);
+    if (i.dataset.k === "routes" && S.layers.future) {
+      if (!i.checked) S.showFutureRoutes = false;
+      if (i.checked && S.showFutureRoutes) S.layers.future.addTo(map); else map.removeLayer(S.layers.future);
+    }
+    renderOverlayList();
   }));
 }
-$("#layers-btn").addEventListener("click", (e) => { e.stopPropagation(); $("#layers-pop").hidden = !$("#layers-pop").hidden; });
-document.addEventListener("click", (e) => { if (!$("#layers-box").contains(e.target)) $("#layers-pop").hidden = true; });
+function showLayers(open) { $("#layers-pop").hidden = !open; $("#layers-box").classList.toggle("layers-open", open); $("#layers-btn").setAttribute("aria-expanded", String(open)); }
+function setZoneLabelsVisible(visible, remember = true) {
+  $("#map").classList.toggle("hide-zone-labels", !visible);
+  $("#zone-labels").checked = visible;
+  if (remember) store.set("off.zoneLabels", !visible);
+}
+$("#zone-labels").addEventListener("change", (e) => setZoneLabelsVisible(e.target.checked));
+$("#layers-btn").addEventListener("click", (e) => { e.stopPropagation(); showLayers($("#layers-pop").hidden); });
+$("#layers-close").addEventListener("click", () => showLayers(false));
+document.addEventListener("click", (e) => { if (!$("#layers-box").contains(e.target)) showLayers(false); });
 chips("#basemap", (v) => setBasemap(v));
 chips("#colormode", (v) => { S.colorMode = v; store.set("colormode", v); applyRouteStyles(); legend(); });
 
 function legend() {
-  const it = (sw, t) => `<div class="it"><span class="lsw" style="${sw}"></span>${t}</div>`;
-  let routes = it("border-top:3px solid #475569;height:0", "Съемка (галсы)") + it("border-top:2px dashed #475569;height:0", "Перелет, взлет, посадка");
+  const it = (sw, t) => `<div class="legend-item"><span class="legend-swatch" style="${sw}"></span><span>${esc(t)}</span></div>`;
+  const pattern = it("border-top:3px solid #475569;height:0", "Сплошная — съёмка") + it("border-top:2px dashed #475569;height:0", "Пунктир — перелёт");
+  let routes = (S.plan?.drones || []).map(d => it(`border-top:3px solid ${S.colors[d.id] || "#64748b"};height:0`, d.id)).join("") || it("border-top:3px solid #2563eb;height:0", "Цвет борта");
   if (S.colorMode === "model") routes = Object.entries(MODEL_COLORS).map(([k, c]) => it(`border-top:3px solid ${c};height:0`, S.catalog?.drones[k]?.title || k)).join("");
-  if (S.colorMode === "phase") routes = ["takeoff", "transit_out", "descent", "survey", "climb", "transit_back", "landing"].map((p) => it(`border-top:3px solid ${PHASE_COLORS[p]};height:0`, PHASE_RU[p])).join("");
+  if (S.colorMode === "phase") routes = ["takeoff", "transit_out", "descent", "survey", "climb", "transit_back", "landing"].map(p => it(`border-top:3px solid ${PHASE_COLORS[p]};height:0`, PHASE_RU[p])).join("");
   $("#legend").innerHTML =
-    it("background:rgba(37,99,235,.12);border:2px solid #2563eb", "Область съемки") +
-    it("background:rgba(220,38,38,.25);border:2px solid #dc2626", "Запретная зона") +
-    it("border:2px dashed #ea580c", "Временная зона") +
-    it("border:2px dotted #9333ea", "Зона по высотам") +
-    it("background:#facc15;border:2px solid #111;border-radius:50%;width:12px", "Высотное препятствие") + routes +
-    it("background:#f59e0b;border-radius:50%;width:12px;border:2px solid #fff", "Наибольшее сближение бортов");
+    `<div class="legend-group"><div class="legend-group-title">Участок и ограничения</div><div class="legend-grid">${
+      it("background:rgba(37,99,235,.12);border:2px solid #2563eb", "Область съёмки") +
+      it("background:rgba(220,38,38,.25);border:2px solid #dc2626", "Запретная зона") +
+      it("border:2px dashed #ea580c", "Временная зона") +
+      it("background:rgba(217,119,6,.13);border:2px dotted #d97706", "Ограничение высоты") +
+      it("background:#facc15;border:2px solid #111;border-radius:50%;width:12px", "Препятствие") +
+      it("background:#0f172a;border-radius:4px;width:15px", "Площадка взлёта")
+    }</div></div>` +
+    `<div class="legend-group"><div class="legend-group-title">Линии маршрута</div><div class="legend-grid">${pattern}</div></div>` +
+    `<div class="legend-group"><div class="legend-group-title">Цвет линий · ${S.colorMode === "model" ? "по типам БВС" : S.colorMode === "phase" ? "по этапам" : "по бортам"}</div><div class="legend-grid">${routes}</div></div>` +
+    `<div class="legend-group"><div class="legend-group-title">Результат и проверка</div><div class="legend-grid">${
+      it("background:rgba(22,163,74,.23);border:1px solid #16a34a", "Отснято по плану") +
+      it("background:rgba(15,23,42,.22);border:1px dashed #475569", "Не покрыто") +
+      it("background:#f59e0b;border-radius:50%;width:12px;border:2px solid #fff", "Точка проверки") +
+      it("background:#dc2626;border-radius:50%;width:12px;border:2px solid #fff", "Нарушение")
+    }</div></div>`;
 }
 
 // ================================================================ контролы
@@ -224,8 +290,8 @@ function setWindDir(d) {
   summarize();
 }
 $("#wind").addEventListener("input", () => { $("#wind-v").textContent = (+$("#wind").value).toFixed(1); summarize(); });
-$("#front").addEventListener("input", () => { S.frontDefault = false; $("#front-v").textContent = $("#front").value + "%"; summarize(); });
-$("#side").addEventListener("input", () => { S.sideDefault = false; $("#side-v").textContent = $("#side").value + "%"; summarize(); });
+$("#front").addEventListener("input", () => { S.frontDefault = false; overlapControls(); summarize(); });
+$("#side").addEventListener("input", () => { S.sideDefault = false; overlapControls(); summarize(); });
 ["#gsd_cm", "#deadline", "#effort", "#cloud", "#start", "#vlos_km", "#reserve_pct", "#min_sun", "#takeoff_weight"].forEach((s) => $(s).addEventListener("input", summarize));
 function overlapControls() {
   const defaults = S.catalog?.survey_types?.[S.survey] || {};
@@ -233,10 +299,19 @@ function overlapControls() {
   $("#front").min = camera ? 70 : 50; $("#side").min = camera ? 50 : 0;
   if (S.frontDefault) $("#front").value = (defaults.front_overlap ?? 0.7) * 100;
   if (S.sideDefault) $("#side").value = (defaults.side_overlap ?? 0.5) * 100;
-  $("#front-v").textContent = $("#front").value + "%" + (S.frontDefault ? " · каталог" : "");
-  $("#side-v").textContent = $("#side").value + "%" + (S.sideDefault ? " · каталог" : "");
+  for (const axis of ["front", "side"]) {
+    const input = $("#" + axis);
+    const value = fmt(+input.value, 1) + "%";
+    $("#" + axis + "-v").textContent = value;
+    $("#" + axis + "-auto").hidden = !S[axis + "Default"];
+    $("#" + axis + "-min").textContent = fmt(+input.min, 0) + "%";
+    input.setAttribute("aria-valuetext", value);
+    const fill = Math.max(0, Math.min(100, (+input.value - +input.min) / (+input.max - +input.min) * 100));
+    input.setAttribute("style", `--range-fill:${fill}%`);
+  }
 }
 chips("#survey_type", (v) => { S.survey = v; overlapControls(); summarize(); });
+$("#overlap-reset").onclick = () => { S.frontDefault = true; S.sideDefault = true; overlapControls(); invalidatePlan(); summarize(); toast("Перекрытия взяты из каталога"); };
 chips("#energy_model", (v) => { S.energy = v; hints(); summarize(); });
 chips("#wind_model", (v) => { S.wind = v; hints(); summarize(); });
 chips("#airspace_mode", (v) => { S.airspace = v; hints(); summarize(); });
@@ -276,10 +351,10 @@ function summarize() {
   const types = Object.values(S.fleet).filter((x) => x > 0).length;
   $("#sum-fleet").textContent = `${n} ${plural(n, "борт", "борта", "бортов")} · ${types} ${plural(types, "тип", "типа", "типов")}`;
   const gsd = $("#gsd_cm").value;
-  $("#sum-survey").textContent = `${SURVEY_RU[S.survey]}${gsd ? ` · ${gsd} см` : ""} · ${$("#front").value}/${$("#side").value}%`;
+  $("#sum-survey").textContent = `${SURVEY_RU[S.survey]}${gsd ? ` · ${fmt(+gsd)} см` : ""} · ${fmt(+$("#front").value)} / ${fmt(+$("#side").value)}%`;
   $("#sum-cond").textContent = `${S.airspace === "no_flight_plan" ? "≤150 м · " : ""}${(+$("#wind").value).toFixed(1)} м/с ${RUMB[Math.round(S.windDir / 22.5) % 16]} · ${$("#start").value.slice(5, 16).replace("T", " ")}`;
   $("#sum-opt").textContent = `${$("#deadline").value ? "срок " + $("#deadline").value + " ч · " : ""}${$("#effort").selectedOptions[0].text.toLowerCase()}${S.optimizer === "grid" ? " · сетка" : " · TPE"}${S.energy === "calibrated" ? " · АКБ: телеметрия" : ""}`;
-  $("#tf-sum").innerHTML = `<b>${n} ${plural(n, "борт", "борта", "бортов")}</b> · ${SURVEY_RU[S.survey]}${gsd ? ` ${gsd} см` : ""} · ветер ${(+$("#wind").value).toFixed(1)} м/с<br>${S.objective === "time" ? "минимум времени" : "минимум налета"} · ${S.wind === "qa" ? "ветер по методике QA" : "физическая модель ветра"}`;
+  $("#tf-sum").innerHTML = `<b>${n} ${plural(n, "борт", "борта", "бортов")}</b> · ${SURVEY_RU[S.survey]}${gsd ? ` ${gsd} см` : ""} · ветер ${(+$("#wind").value).toFixed(1)} м/с<br>${objectiveName(S.objective)} · ${S.wind === "qa" ? "ветер по методике QA" : "физическая модель ветра"}`;
 }
 
 function params(objective) {
@@ -343,7 +418,7 @@ function styleScenario(f) {
   if (k === "survey_area") return { color: "#2563eb", weight: 2, fillColor: "#2563eb", fillOpacity: 0.06 };
   if (k === "no_fly") {
     if (p.active_from || p.active_to || p.category === "TEMP") return { color: "#ea580c", weight: 2, dashArray: "7 5", fillColor: "#ea580c", fillOpacity: 0.12 };
-    if (p.alt_min_m) return { color: "#9333ea", weight: 1.5, dashArray: "2 6", fillColor: "#9333ea", fillOpacity: 0.05 };
+    if (p.alt_min_m != null || p.alt_max_m != null) return { color: "#d97706", weight: 1.5, dashArray: "2 6", fillColor: "#d97706", fillOpacity: 0.13 };
     return { color: "#dc2626", weight: 2, fillColor: "#dc2626", fillOpacity: 0.2 };
   }
   if (k === "obstacle") return { color: "#111827", weight: 3, dashArray: "1 6" };
@@ -368,6 +443,19 @@ function siteIcon(kind) {
   const bg = kind === "reserve" ? "#64748b" : kind === "extra" ? "#2563eb" : "#0f172a";
   return L.divIcon({ className: "", iconSize: [26, 26], iconAnchor: [13, 13], html: `<div class="site-ico" style="background:${bg}">${kind === "reserve" ? "R" : "H"}</div>` });
 }
+function zoneLabel(p) {
+  const temporary = !!(p.active_from || p.active_to || p.category === "TEMP");
+  const height = !temporary && (p.alt_min_m != null || p.alt_max_m != null);
+  const radius = /\bR\s*=\s*(\d+(?:[.,]\d+)?)\s*(км|м)(?=\s|[)]|$)/i.exec(p.name || "");
+  const detail = height
+    ? p.alt_min_m != null ? `от ${fmt(p.alt_min_m, 0)} м` : `до ${fmt(p.alt_max_m, 0)} м`
+    : radius ? `R = ${radius[1]} ${radius[2]}`
+    : temporary && p.active_from && p.active_to ? `${p.active_from.slice(11, 16)}–${p.active_to.slice(11, 16)}`
+    : (p.name || "Зона ограничений").replace(/\s*\([^)]*\)/g, "").slice(0, 32);
+  const title = temporary ? "Временная зона" : height ? "Ограничение" : "Запретная зона";
+  return {className: `zone-label ${temporary ? "zone-temporary" : height ? "zone-height" : "zone-ban"}`,
+    html: `<span class="zone-label-content">${icon(height || temporary ? "alert" : "ban")}<span><b>${title}</b><small>${esc(detail)}</small></span></span>`};
+}
 const WORK_KINDS = new Set(["survey_area", "site", "reserve_site", "no_fly", "airspace"]);
 function areaKm2(gj) {
   // площадь областей съемки (сферический эксцесс не нужен — участки малы)
@@ -383,13 +471,26 @@ function areaKm2(gj) {
   return a;
 }
 function drawScenario(gj) {
-  const layer = L.geoJSON(gj, {
+  const labelledZones = new Set(gj.features.filter(f => {
+    const p = f.properties || {};
+    return p.kind === "no_fly" && (p.alt_max_m == null || p.alt_max_m <= 700 || (p.alt_min_m != null && p.alt_min_m <= 700));
+  }).slice(0, 8));
+  const surveyLayer = L.geoJSON({type: "FeatureCollection", features: gj.features.filter(f => f.properties.kind === "survey_area")},
+    {style: styleScenario, interactive: false});
+  const objects = L.geoJSON({type: "FeatureCollection", features: gj.features.filter(f => f.properties.kind !== "survey_area")}, {
     style: styleScenario,
     pointToLayer: (f, ll) => f.properties.kind === "obstacle"
       ? L.circleMarker(ll, { radius: 5, color: "#111827", fillColor: "#facc15", fillOpacity: 1, weight: 1.5, renderer: canvasR })
       : L.marker(ll, { icon: siteIcon(f.properties.kind === "reserve_site" ? "reserve" : "main") }),
-    onEachFeature: (f, l) => l.bindPopup(popupScenario(f.properties)),
+    onEachFeature: (f, l) => {
+      l.bindPopup(popupScenario(f.properties));
+      if (labelledZones.has(f) && l.bindTooltip) {
+        const label = zoneLabel(f.properties);
+        l.bindTooltip(label.html, {permanent: true, direction: "center", className: label.className, opacity: 0.97, interactive: false});
+      }
+    },
   });
+  const layer = L.layerGroup([surveyLayer, objects]);
   setLayer("scenario", layer);
   drawExtraSites();
   map.invalidateSize();
@@ -534,21 +635,31 @@ async function runPlan(objective, label, request) {
 async function cancelRun() { S.cancelRequested = true; if (S.job) { try { await api(`/api/jobs/${S.job}/cancel`, { method: "POST" }); } catch (e) {} } }
 $("#rp-cancel").addEventListener("click", cancelRun);
 let busy = false;
+let missionRunAttempts = Math.min(2, Math.max(0, Number(store.get("onboarding.attempts", 0)) || 0));
+function updateOnboarding() { $("#first-mission").hidden = missionRunAttempts >= 2; }
+function recordMissionRunAttempt() {
+  if (missionRunAttempts < 2) {
+    missionRunAttempts++;
+    store.set("onboarding.attempts", missionRunAttempts);
+  }
+  updateOnboarding();
+}
 async function onRun(objectives) {
   if (busy) return; busy = true;
   S.cancelRequested = false;
-  const request = { scenario: structuredClone(S.scenario), params: params(), revision: S.revision };
+  recordMissionRunAttempt();
   $$("#run, #run2, #compare, #hint-run").forEach((b) => { b.disabled = true; });
   try {
+    const request = { scenario: structuredClone(S.scenario), params: params(), revision: S.revision };
     const plans = [];
     for (const o of objectives) {
       if (S.cancelRequested || request.revision !== S.revision) throw new Cancelled("Расчет отменен");
-      plans.push(await runPlan(o, objectives.length > 1 ? `Сравнение: ${o === "time" ? "минимум времени" : "минимум налета"} (${plans.length + 1}/2)` : `Расчет: ${o === "time" ? "минимум времени" : "минимум налета"}`, request));
+      plans.push(await runPlan(o, objectives.length > 1 ? `Сравнение: ${objectiveName(o)} (${plans.length + 1}/${objectives.length})` : `Расчет: ${objectiveName(o)}`, request));
     }
     if (S.cancelRequested || request.revision !== S.revision) throw new Cancelled("Расчет отменен");
     S.cmp = objectives.length > 1 ? plans.filter((p) => p.summary && p.summary.makespan_h !== undefined) : null;
     loadPlan(plans.find((p) => p.params?.objective === S.objective) || plans[0]);
-    switchTab("result");
+    switchTab("overview");
     const p = S.plan;
     if (p.status === "ok" && p.validation?.passed) toast(`План готов за ${fmt(p.summary.compute_s)} с: ${fmt(p.summary.makespan_h)} ч работ, ${p.summary.sorties} ${plural(p.summary.sorties, "вылет", "вылета", "вылетов")}, crash-тест пройден`, "ok", 6000);
     else toast(p.error || "План невыполним — см. рекомендации", "bad", 9000);
@@ -623,6 +734,26 @@ function switchTab(t) {
   if (t === "history") refreshHistory();
 }
 $$(".tabs button").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+function updatePanelAlert(plan) {
+  const button = $("#panel-alert");
+  const failed = plan?.validation?.checks?.filter(check => !check.passed).length || 0;
+  const warnings = plan?.warnings?.length || 0;
+  const late = !!(plan?.params?.deadline_h && plan?.summary?.makespan_h > plan.params.deadline_h);
+  const infeasible = !!(plan && plan.status !== "ok");
+  const count = failed + warnings + Number(late || infeasible);
+  button.hidden = !count;
+  if (!count) return;
+  button.classList.toggle("critical", !!failed || infeasible);
+  const messages = [infeasible && !failed ? "План требует внимания" : "", failed ? `${failed} ${plural(failed, "нарушение", "нарушения", "нарушений")}` : "",
+    warnings ? `${warnings} ${plural(warnings, "замечание", "замечания", "замечаний")}` : "",
+    late ? "срок превышен" : ""].filter(Boolean);
+  button.innerHTML = `${ico("alert")}<span><strong>${esc(messages.join(" · ") || "План требует внимания")}</strong><small>Открыть проверки и рекомендации</small></span>${ico("chevR")}`;
+}
+$("#panel-alert").addEventListener("click", () => {
+  switchTab("result");
+  const target = $("#result .check.bad") || $("#result .banner") || $("#result .step:last-child");
+  target?.scrollIntoView({behavior: "smooth", block: "start"});
+});
 
 function loadPlan(plan) {
   stopPlayback();
@@ -634,23 +765,36 @@ function loadPlan(plan) {
   }
   const tz = tzFromIso(plan.summary && plan.summary.mission_start_iso);
   if (tz !== null) TZ_MIN = tz;
-  S.sel = null; S.hidden = new Set(); S.sortieFilter = "";
+  S.sel = null; S.showOtherDrones = false; S.showFutureRoutes = false; S.hidden = new Set(); S.sortieFilter = ""; S.routeFocus = null; S.timelineDrone = "";
+  S.progress = null; S.coverageShown = 0; S.timelineEvents = []; S.timelineGroups = []; S.highlightedEvent = null;
   S.colors = {};
   (plan.drones || []).forEach((d, i) => { S.colors[d.id] = d.color || PALETTE[i % PALETTE.length]; });
+  legend();
   $("#inspector").hidden = true;
   $("#map-hint").hidden = true;
   renderResult(plan);
+  renderRouteFocus();
+  updatePanelAlert(plan);
   drawPlan(plan);
+  setFutureRoutes(false);
   setupTimeline(plan);
+  loadCoverage(plan);
+  window.product?.loadReport(plan);
 }
 function clearPlan() {
   stopPlayback();
-  S.plan = null; S.sel = null; S.cmp = null; S.recHover = null;
-  ["routes", "uncovered", "drones", "checks", "sel"].forEach(dropLayer);
+  S.plan = null; S.sel = null; S.cmp = null; S.recHover = null; S.progress = null; S.coverageShown = 0;
+  legend();
+  S.timelineEvents = []; S.timelineGroups = []; S.highlightedEvent = null; S.routeFocus = null; S.timelineDrone = "";
+  $("#timeline-markers").innerHTML = ""; $("#timeline-event-popover").hidden = true;
+  ["routes", "future", "coverage", "uncovered", "drones", "checks", "sel"].forEach(dropLayer);
   $("#dock").hidden = true; $("#inspector").hidden = true;
+  $("#dock").classList.remove("expanded"); $("#dock-expand").setAttribute("aria-pressed", "false");
+  renderRouteFocus(); updatePanelAlert(null);
   $("#result").innerHTML = ""; $("#result-empty").hidden = false; $("#res-badge").hidden = true;
   renderOverlayList();
   drawExtraSites();
+  window.product?.clearReport();
 }
 function invalidatePlan() {
   S.revision++;
@@ -673,6 +817,22 @@ function deltaChip(cur, other, lowerBetter = true) {
   if (Math.abs(d) < 0.5) return "";
   const good = lowerBetter ? d < 0 : d > 0;
   return `<span class="delta ${good ? "good" : "worse"}" title="относительно другого критерия">${d > 0 ? "+" : "−"}${fmt(Math.abs(d), 0)}%</span>`;
+}
+function flightGeometry(s) {
+  const headings = [...new Set((s.headings_deg || []).filter(Number.isFinite))].sort((a, b) => a - b);
+  const layers = [...new Set((s.transit_layers_agl_m || []).filter(Number.isFinite))].sort((a, b) => a - b);
+  const height = layers.length ? `${fmt(layers[0], 0)}${layers.length > 1 ? "–" + fmt(layers[layers.length - 1], 0) : ""} м AGL` : "высоты не указаны";
+  const pills = (values, unit) => values.map(x => `<span class="geometry-value">${fmt(x, 1)}${unit}</span>`).join("");
+  return `<details class="flight-geometry">
+    <summary><span class="geometry-icon">${ico("route")}</span><span class="geometry-summary"><b>Геометрия маршрутов</b><span>${headings.length} ${plural(headings.length, "направление", "направления", "направлений")} · ${height}</span></span>${ico("chev")}</summary>
+    <div class="geometry-body">
+      <div class="geometry-label">Курсы галсов <span class="badge">${headings.length}</span></div>
+      <div class="geometry-values" tabindex="0" role="region" aria-label="Все курсы галсов">${pills(headings, "°") || '<span class="hint">Нет данных</span>'}</div>
+      <div class="geometry-label">Эшелоны перелёта · AGL</div>
+      <div class="geometry-values" tabindex="0" role="region" aria-label="Все эшелоны перелёта">${pills(layers, " м") || '<span class="hint">Нет данных</span>'}</div>
+      <div class="geometry-terrain"><span>Рельеф</span><span>${esc(s.terrain || "Нет данных")}</span></div>
+    </div>
+  </details>`;
 }
 function renderResult(r) {
   $("#result-empty").hidden = true;
@@ -697,7 +857,7 @@ function renderResult(r) {
   const kpi = (val, u, l, extra = "") => `<div class="kpi"><div class="kpi-v">${val}<small>${u}</small>${extra}</div><div class="kpi-l">${l}</div></div>`;
   const models = Object.values(r.models);
   const shares = Object.entries(s.shares || {}).filter(([, x]) => x > 0.001);
-  const tags = [s.objective === "time" ? "минимум времени" : "минимум налета", s.optimizer === "bayes" ? "байесовская оптимизация" : "сетка",
+  const tags = [objectiveName(s.objective), s.optimizer === "bayes" ? "байесовская оптимизация" : "сетка",
     s.wind_model === "physical" ? "физическая модель ветра" : "ветер по методике QA", s.energy_model === "calibrated" ? "АКБ по телеметрии" : "АКБ линейно",
     s.airspace_mode === "no_flight_plan" ? "без плана полета ≤150 м" : "коридор до 700 м", `расчет ${fmt(s.compute_s)} с`];
   el.innerHTML = `
@@ -722,7 +882,7 @@ function renderResult(r) {
     </div>
     ${shares.length > 1 ? `<div class="shares">${shares.map(([k, x]) => `<i style="width:${x * 100}%;background:${MODEL_COLORS[k] || "#64748b"}" title="${esc(r.models[k]?.title || k)}: ${fmt(x * 100, 0)}%"></i>`).join("")}</div>
       <div class="shares-l">${shares.map(([k, x]) => `<span style="--c:${MODEL_COLORS[k] || "#64748b"}">${esc((r.models[k]?.title || k).replace("Геоскан ", ""))} ${fmt(x * 100, 0)}%</span>`).join("")}<span class="hint" style="margin-left:auto">доли площади</span></div>` : ""}
-    <div class="meta">Курс галсов ${s.headings_deg.map((h) => fmt(h, 0) + "°").join(", ")} · эшелоны перелета ${s.transit_layers_agl_m.map((x) => fmt(x, 0)).join("/")} м · ${esc(s.terrain)}</div>
+    ${flightGeometry(s)}
 
     <div class="section-h">Crash-тест · независимая проверка <span class="badge ${v.passed ? "" : "bad"}">${passed}/${v.checks.length}</span></div>
     <div class="checks">${v.checks.map((c, ci) => `<details class="check ${c.passed ? "ok" : "bad"}" ${c.passed ? "" : "open"}><summary><span class="dot-s">${ico(c.passed ? "check" : "x")}</span>${esc(c.name)}
@@ -731,24 +891,26 @@ function renderResult(r) {
 
     ${recsHtml(r)}
 
-    ${ok ? `<div class="section-h">Полетные задания</div>
-    <div class="exports">
-      <a class="btn btn-primary primary" href="/api/plans/${r.id}/export/zip">${ico("download")}Скачать всё: KML, GeoJSON, CSV, QGC .plan, по бортам</a>
-      <a class="btn" href="/api/plans/${r.id}/export/kml">${ico("file")}KML</a>
-      <a class="btn" href="/api/plans/${r.id}/export/geojson">${ico("file")}GeoJSON</a>
-      <a class="btn" href="/api/plans/${r.id}/export/csv">${ico("file")}CSV</a>
-      <a class="btn wide" href="/api/plans/${r.id}/brief" target="_blank" rel="noopener">${ico("printer")}Полетные задания для печати (маршрут, этапы, ключевые точки, профиль)</a>
+    ${ok ? `<div class="section-h">Файлы миссии</div>
+    <div class="mission-exports">
+      <a class="export-card export-bundle" href="/api/plans/${r.id}/export/zip"><span class="export-icon">${ico("download")}</span><span class="export-copy"><strong>Скачать комплект</strong><span>ZIP · маршруты, задания и отчёт</span></span><span class="export-tag">ZIP</span></a>
+      <div class="export-formats">
+        <a class="export-format" href="/api/plans/${r.id}/export/kml">${ico("map")}<strong>KML</strong><span>Для карт</span></a>
+        <a class="export-format" href="/api/plans/${r.id}/export/geojson">${ico("code")}<strong>GeoJSON</strong><span>Геоданные</span></a>
+        <a class="export-format" href="/api/plans/${r.id}/export/csv">${ico("file")}<strong>CSV</strong><span>Расписание</span></a>
+      </div>
+      <a class="export-card export-print" href="/api/plans/${r.id}/brief" target="_blank" rel="noopener"><span class="export-icon">${ico("printer")}</span><span class="export-copy"><strong>Печатные задания</strong><span>Маршруты, этапы и ключевые точки</span></span>${ico("chevR")}</a>
+      <div class="export-footnote">В комплекте — QGC .plan по вылетам и файлы каждого борта.</div>
     </div>` : ""}
 
     <div class="section-h">Борта <span class="hint">задание борта — ${icon("file").replace("<svg", '<svg style="width:12px;height:12px;vertical-align:-2px"')} KML · ${icon("printer").replace("<svg", '<svg style="width:12px;height:12px;vertical-align:-2px"')} печать</span></div>
     <div class="list-box" id="drones"></div>
 
-    ${(s.maintenance || []).length ? `<div class="section-h">Ресурс до ТО <span class="hint">налет связан с регламентом ТО</span></div>
-    <div class="table-box"><table class="t compact mt"><tr><th>Тип</th><th class="num">Вылетов</th><th class="num">Налет, ч</th><th>Интервал ТО</th><th class="num">Израсходовано</th></tr>
+    ${(s.maintenance || []).length ? `<div class="section-h maintenance-heading">Ресурс до ТО <span class="hint">налет связан с регламентом ТО</span></div>
+    <div class="table-box maintenance-table-box"><table class="t compact maintenance-table"><thead><tr><th scope="col">Тип</th><th scope="col" class="num">Вылетов</th><th scope="col" class="num">Налет, ч</th><th scope="col">Интервал / расход ТО</th></tr></thead><tbody>
       ${s.maintenance.map((m) => `<tr title="${esc(m.note || "")}"><td><span class="sw" style="background:${MODEL_COLORS[m.model] || "#64748b"}"></span>${esc(m.title.replace("Геоскан ", ""))}${m.note ? " *" : ""}</td>
-        <td class="num">${m.sorties}</td><td class="num">${fmt(m.flight_h)}</td><td>${esc(m.interval)}</td>
-        <td class="num">${fmt(m.used_pct)}%<span class="mini-bar"><i style="width:${Math.min(100, m.used_pct)}%;background:var(--accent)"></i></span></td></tr>`).join("")}
-    </table></div>${s.maintenance.some((m) => m.note) ? `<div class="hint" style="margin-top:4px">* ${esc(s.maintenance.find((m) => m.note).note)}</div>` : ""}` : ""}
+        <td class="num">${m.sorties}</td><td class="num">${fmt(m.flight_h)}</td><td>${esc(m.interval)}<span class="maintenance-used">Израсходовано ${fmt(m.used_pct)}%</span></td></tr>`).join("")}
+    </tbody></table></div>${s.maintenance.some((m) => m.note) ? `<div class="hint" style="margin-top:4px">* ${esc(s.maintenance.find((m) => m.note).note)}</div>` : ""}` : ""}
 
     <div class="section-h">Параметры съемки</div>
     <div class="table-box"><table class="t compact"><tr><th>Тип</th><th class="num">H, м</th><th class="num">Шаг, м</th><th class="num">V, м/с</th><th class="num">R, км</th></tr>
@@ -775,21 +937,23 @@ function checkValue(c) {
 function compareCard(r) {
   const pl = (S.cmp || []).filter((p) => p.scenario_name === r.scenario_name);
   if (pl.length < 2 || !pl.some((p) => p.id === r.id)) return "";
-  const [a, b] = pl;
-  const best = (k, lower = true) => { const va = a.summary[k], vb = b.summary[k]; return va === vb ? null : ((va < vb) === lower ? a.id : b.id); };
+  const best = (k) => pl.filter(p => canExport(p)).reduce((acc, p) => !acc || p.summary[k] < acc.summary[k] ? p : acc, null)?.id;
   const col = (p) => {
     const s = p.summary;
     const row = (lbl, k, u, d = 1) => `<div class="cmp-row"><span>${lbl}</span><b class="${best(k) === p.id ? "best" : ""}">${fmt(s[k], d)} ${u}</b></div>`;
-    return `<div class="cmp-col ${p.id === r.id ? "cur" : ""}"><div class="cmp-h">${ico(p.params.objective === "time" ? "clock" : "battery")}${p.params.objective === "time" ? "Минимум времени" : "Минимум налета"}</div>
+    return `<div class="cmp-col ${p.id === r.id ? "cur" : ""}"><div class="cmp-h">${ico(p.params.objective === "time" ? "clock" : "battery")}${objectiveName(p.params.objective)}</div>
       ${row("Время работ", "makespan_h", "ч")}${row("Налет", "flight_hours", "ч")}${row("Вылетов", "sorties", "", 0)}
       <div class="cmp-row"><span>Crash-тест</span><b class="${p.validation?.passed ? "best" : ""}">${p.validation?.passed ? "✓ пройден" : "✖"}</b></div>
       ${p.id === r.id ? `<button class="btn btn-sm" disabled>На карте</button>` : `<button class="btn btn-sm cmp-show" data-id="${p.id}">Показать этот план</button>`}</div>`;
   };
-  const t = a.params.objective === "time" ? a : b, f = t === a ? b : a;
-  const dFl = (f.summary.flight_hours - t.summary.flight_hours) / t.summary.flight_hours * 100;
-  const dT = (f.summary.makespan_h - t.summary.makespan_h) / t.summary.makespan_h * 100;
-  return `<div class="cmp-card"><div class="cmp-grid">${col(a)}${col(b)}</div>
-    <div class="cmp-foot">«Минимум налета» дает ${dFl <= 0 ? "−" : "+"}${fmt(Math.abs(dFl), 0)}% налета ценой ${dT >= 0 ? "+" : "−"}${fmt(Math.abs(dT), 0)}% времени работ.</div></div>`;
+  const timePlan = pl.find(p => p.params.objective === "time" && canExport(p));
+  const balancePlan = pl.find(p => p.params.objective === "balanced" && canExport(p));
+  let note = "Сравнение при одинаковых условиях. Лучшие значения отмечены среди выполнимых планов.";
+  if (timePlan && balancePlan && timePlan.summary.makespan_h > 0 && timePlan.summary.flight_hours > 0) {
+    const change = (key) => { const d = (balancePlan.summary[key] / timePlan.summary[key] - 1) * 100; return `${d < 0 ? "−" : "+"}${fmt(Math.abs(d))}%`; };
+    note += ` Баланс относительно режима «Минимум времени»: ${change("makespan_h")} времени, ${change("flight_hours")} налёта.`;
+  }
+  return `<div class="cmp-card"><div class="cmp-grid ${pl.length > 2 ? "three" : ""}">${pl.map(col).join("")}</div><div class="cmp-foot">${note}</div></div>`;
 }
 function renderDrones() {
   const r = S.plan;
@@ -851,36 +1015,79 @@ function warnHtml(r) {
 }
 
 // ================================================================ маршруты на карте
+function renderRouteFocus() {
+  const control = $("#route-focus");
+  const sorties = S.plan?.sorties || [];
+  control.disabled = !sorties.length;
+  $("#route-focus-hint").textContent = sorties.length ? "Выбор оставит на карте только один вылет." : "После расчёта можно оставить на карте один маршрут.";
+  control.innerHTML = '<option value="">Все маршруты</option>' + sorties.map(s =>
+    `<option value="${s.id}">Вылет ${s.id} · ${esc(s.drone_id)}</option>`).join("");
+  control.value = S.routeFocus === null ? "" : String(S.routeFocus);
+}
+$("#route-focus").addEventListener("change", e => {
+  const id = e.target.value ? Number(e.target.value) : null;
+  S.routeFocus = id;
+  if (id !== null) {
+    const sortie = S.plan?.sorties?.find(s => s.id === id);
+    if (sortie) { S.hidden.delete(sortie.drone_id); selectSortie(id, false); }
+  } else clearSelection();
+  applyRouteStyles(); setTime(S.t); drawGantt(); renderDrones();
+});
 function routeColor(s, ph) {
   if (S.colorMode === "model") return MODEL_COLORS[s.model] || "#64748b";
   if (S.colorMode === "phase") return PHASE_COLORS[ph] || "#64748b";
   return S.colors[s.drone_id];
 }
+function routeTimeAtClick(line, latlng) {
+  const points = line._fullPts || [], times = line._times || [];
+  if (points.length < 2 || points.length !== times.length) return null;
+  const click = map.latLngToLayerPoint(latlng);
+  let best = Infinity, result = null;
+  for (let i = 1; i < points.length; i++) {
+    const a = map.latLngToLayerPoint(points[i - 1]), b = map.latLngToLayerPoint(points[i]);
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const fraction = dx || dy ? Math.max(0, Math.min(1, ((click.x - a.x) * dx + (click.y - a.y) * dy) / (dx * dx + dy * dy))) : 0;
+    const distance = (click.x - a.x - fraction * dx) ** 2 + (click.y - a.y - fraction * dy) ** 2;
+    if (distance < best) { best = distance; result = times[i - 1] + fraction * (times[i] - times[i - 1]); }
+  }
+  return result;
+}
 function drawPlan(r) {
-  ["routes", "uncovered", "drones", "checks", "sel"].forEach(dropLayer);
-  S.routeLines = {};
+  ["routes", "future", "coverage", "uncovered", "drones", "checks", "sel"].forEach(dropLayer);
+  S.routeLines = {}; S.futureLines = {};
   if (!r.sorties) { drawExtraSites(); renderOverlayList(); return; }
-  const g = L.layerGroup();
+  const g = L.layerGroup(), future = L.layerGroup();
   for (const s of r.sorties) {
     const segs = [];
     let cur = null;
     for (let i = 1; i < s.waypoints.length; i++) {
       const a = s.waypoints[i - 1], b = s.waypoints[i];
       const ph = b[5] === "ground" ? a[5] : b[5];
-      if (!cur || cur.ph !== ph) { cur = { ph, pts: [[a[1], a[0]]] }; segs.push(cur); }
-      cur.pts.push([b[1], b[0]]);
+      if (!cur || cur.ph !== ph) { cur = { ph, pts: [[a[1], a[0]]], times: [a[4]] }; segs.push(cur); }
+      cur.pts.push([b[1], b[0]]); cur.times.push(b[4]);
     }
     S.routeLines[s.id] = segs.map((sg) => {
       const surv = sg.ph === "survey";
-      const pl = L.polyline(sg.pts, { renderer: canvasR, color: routeColor(s, sg.ph), weight: surv ? 2 : 1.5, opacity: surv ? 0.85 : 0.55, dashArray: surv ? null : "6 6", _ph: sg.ph, _sid: s.id });
+      const pl = L.polyline([], { renderer: routeR, bubblingMouseEvents: false, color: routeColor(s, sg.ph), weight: surv ? 3 : 2, opacity: surv ? 0.85 : 0.55, dashArray: surv ? null : "6 6", _ph: sg.ph, _sid: s.id });
+      pl._fullPts = sg.pts; pl._times = sg.times; pl._progressState = null;
       pl.bindTooltip(() => `Вылет ${s.id} · ${esc(s.drone_id)} · ${s.takeoff_iso.slice(11, 16)} · ${PHASE_RU[sg.ph] || sg.ph}`, { sticky: true, direction: "top", offset: [0, -8] });
-      pl.on("click", (e) => { L.DomEvent.stopPropagation(e); selectSortie(s.id, false); });
+      pl.on("click", (e) => {
+        if (e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
+        const time = routeTimeAtClick(pl, e.latlng);
+        selectSortie(s.id, false);
+        if (time !== null) setTime(time);
+      });
       pl.on("mouseover", () => hoverSortie(s.id, true));
       pl.on("mouseout", () => hoverSortie(s.id, false));
       pl.addTo(g); return pl;
     });
+    S.futureLines[s.id] = segs.map((sg) => L.polyline(sg.pts, { renderer: routeR, color: routeColor(s, sg.ph),
+      weight: sg.ph === "survey" ? 2 : 1.5, opacity: 0.14, dashArray: sg.ph === "survey" ? null : "6 6", interactive: false,
+      _ph: sg.ph, _sid: s.id }).addTo(future));
   }
   setLayer("routes", g);
+  S.layers.future = future;
+  setLayer("coverage", L.layerGroup());
   if (r.geo && r.geo.uncovered) setLayer("uncovered", L.geoJSON(r.geo.uncovered, { style: { color: "#475569", weight: 1, fillColor: "#0f172a", fillOpacity: 0.22, dashArray: "3 3" } }).bindPopup("Не покрыто (запретные зоны, буферы безопасности)"));
   drawChecks(r);
   drawExtraSites();
@@ -909,22 +1116,65 @@ function goToPoint(p) {
     S.layers.checks?.eachLayer((m) => { const ll = m.getLatLng(); if (Math.abs(ll.lat - p.lat) < 1e-6 && Math.abs(ll.lng - p.lon) < 1e-6) m.openPopup(); });
   }, 650);
 }
+function isDroneVisible(id) {
+  if (S.hidden.has(id)) return false;
+  if (S.routeFocus != null && S.plan?.sorties?.find(s => s.id === S.routeFocus)?.drone_id !== id) return false;
+  const selected = S.plan?.sorties?.find((s) => s.id === S.sel);
+  return !selected || S.showOtherDrones || selected.drone_id === id;
+}
 function styleFor(s, l) {
   const surv = l.options._ph === "survey";
-  const hide = S.hidden.has(s.drone_id);
+  const hide = !isDroneVisible(s.drone_id) || (S.routeFocus != null && S.routeFocus !== s.id);
   const sel = S.sel === s.id, dim = S.sel !== null && !sel;
-  return { color: routeColor(s, l.options._ph), opacity: hide ? 0 : dim ? 0.1 : (surv ? 0.88 : 0.6), weight: sel ? (surv ? 3.6 : 2.6) : (surv ? 2 : 1.4) };
+  return { color: routeColor(s, l.options._ph), opacity: hide ? 0 : dim ? 0.1 : (surv ? 0.88 : 0.6), weight: sel ? (surv ? 4 : 3) : (surv ? 3 : 2) };
 }
 function applyRouteStyles() {
   if (!S.plan || !S.plan.sorties) return;
-  for (const s of S.plan.sorties) for (const l of S.routeLines[s.id] || []) l.setStyle(styleFor(s, l));
+  const routes = S.layers.routes;
+  for (const s of S.plan.sorties) for (const l of S.routeLines[s.id] || []) {
+    l.setStyle(styleFor(s, l));
+    // Hidden routes must also be excluded from hit testing.
+    if (isDroneVisible(s.drone_id) && (S.routeFocus == null || S.routeFocus === s.id)) { if (routes && !routes.hasLayer(l)) routes.addLayer(l); }
+    else if (routes?.hasLayer(l)) routes.removeLayer(l);
+  }
+  for (const s of S.plan.sorties) for (const l of S.futureLines[s.id] || []) {
+    l.setStyle({color: routeColor(s, l.options._ph), opacity: isDroneVisible(s.drone_id) && (S.routeFocus == null || S.routeFocus === s.id) ? (S.sel !== null && S.sel !== s.id ? 0.06 : 0.14) : 0});
+  }
   if (S.sel !== null) (S.routeLines[S.sel] || []).forEach((l) => l.bringToFront());
+}
+function setFutureRoutes(on) {
+  S.showFutureRoutes = on;
+  const layer = S.layers.future;
+  if (on && S.layers.routes && !map.hasLayer(S.layers.routes)) {
+    S.layers.routes.addTo(map);
+    store.set("off.routes", false);
+  }
+  if (layer) { if (on) layer.addTo(map); else map.removeLayer(layer); }
+  renderOverlayList();
+}
+function updateRouteProgress() {
+  for (const lines of Object.values(S.routeLines)) for (const l of lines) {
+    if (!l._times) continue;
+    const times = l._times, points = l._fullPts;
+    let state, coords;
+    if (S.t <= times[0]) { state = "future"; coords = []; }
+    else if (S.t >= times[times.length - 1]) { state = "done"; coords = points; }
+    else {
+      state = S.t;
+      let lo = 0, hi = times.length - 1;
+      while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (times[mid] <= S.t) lo = mid; else hi = mid; }
+      const f = (S.t - times[lo]) / (times[hi] - times[lo]);
+      coords = points.slice(0, lo + 1).concat([[points[lo][0] + (points[hi][0] - points[lo][0]) * f,
+                                                 points[lo][1] + (points[hi][1] - points[lo][1]) * f]]);
+    }
+    if (l._progressState !== state) { l.setLatLngs(coords); l._progressState = state; }
+  }
 }
 function hoverSortie(id, on) {
   if (S.sel === id) return;
   const s = S.plan.sorties.find((x) => x.id === id);
   for (const l of S.routeLines[id] || []) {
-    if (on && !S.hidden.has(s.drone_id)) { l.setStyle({ weight: l.options._ph === "survey" ? 3.4 : 2.4, opacity: 1 }); l.bringToFront(); } else l.setStyle(styleFor(s, l));
+    if (on && isDroneVisible(s.drone_id)) { l.setStyle({ weight: l.options._ph === "survey" ? 3.4 : 2.4, opacity: 1 }); l.bringToFront(); } else l.setStyle(styleFor(s, l));
   }
 }
 function drawSelection(s) {
@@ -941,18 +1191,22 @@ function drawSelection(s) {
 function selectSortie(id, zoom, keepView) {
   const s = S.plan?.sorties?.find((x) => x.id === id);
   if (!s) return;
+  if (S.routeFocus != null && S.routeFocus !== id) { S.routeFocus = id; $("#route-focus").value = String(id); }
   S.sel = id;
+  S.showOtherDrones = false;
+  S.hidden.delete(s.drone_id);
+  renderDrones();
   applyRouteStyles();
   drawSelection(s);
   $$("#sorties tr.row").forEach((tr) => tr.classList.toggle("sel", +tr.dataset.s === id));
   if (zoom && !keepView) { S.userMoved = true; map.fitBounds(L.latLngBounds(s.waypoints.map((w) => [w[1], w[0]])), { paddingTopLeft: [40, 40], paddingBottomRight: [40, 40], maxZoom: 16 }); }
-  if (!(S.t >= s.t_takeoff && S.t <= s.t_landing)) setTime(s.t_takeoff);
+  setTime(S.t >= s.t_takeoff && S.t <= s.t_landing ? S.t : s.t_takeoff);
   renderInspector(s);
   drawGantt();
 }
 function clearSelection() {
   if (S.sel === null) return;
-  S.sel = null; applyRouteStyles(); dropLayer("sel"); drawGantt(); $("#inspector").hidden = true;
+  S.sel = null; S.showOtherDrones = false; applyRouteStyles(); setTime(S.t); dropLayer("sel"); drawGantt(); $("#inspector").hidden = true;
   $$("#sorties tr.row").forEach((tr) => tr.classList.remove("sel"));
 }
 map.on("click", (e) => {
@@ -969,6 +1223,7 @@ map.on("click", (e) => {
 function setAddSite(on) {
   S.addSite = on;
   $("#add-site").classList.toggle("on", on);
+  $("#add-site").setAttribute("aria-pressed", String(on));
   document.body.classList.toggle("adding-site", on);
   if (on) toast("Кликните по карте, чтобы поставить площадку взлета/посадки. Esc — закончить");
 }
@@ -990,6 +1245,11 @@ function renderInspector(s) {
   const ph = (s.phases || []).filter((p) => p.phase !== "ground" && p.t_end > p.t_start);
   const byPh = {};
   ph.forEach((p) => { byPh[p.phase] = (byPh[p.phase] || 0) + (p.t_end - p.t_start); });
+  const surveySeconds = byPh.survey || 0;
+  const surveyShare = total > 0 ? surveySeconds / total * 100 : 0;
+  const surveyDistanceShare = s.distance_km > 0 ? s.survey_km / s.distance_km * 100 : 0;
+  const avgSpeed = total > 0 ? s.distance_km / total * 3600 : 0;
+  const current = posAt(s, S.t);
   const pcol = (p) => p === "survey" ? col : PHASE_COLORS[p];
   const plane = s.model === "geoscan_201";
   el.innerHTML = `
@@ -1005,6 +1265,12 @@ function renderInspector(s) {
     </div>
     <div class="phasebar" title="Этапы полета">${ph.map((p) => `<i style="width:${(p.t_end - p.t_start) / total * 100}%;background:${pcol(p.phase)}" title="${PHASE_RU[p.phase]}: ${hmDur(p.t_end - p.t_start)}"></i>`).join("")}</div>
     <div class="phase-l">${Object.entries(byPh).map(([p, t]) => `<span style="--c:${pcol(p)}">${PHASE_RU[p]} ${hmDur(t)}</span>`).join("")}</div>
+    <div class="ins-analysis"><strong>Аналитика следа</strong><div class="ins-analysis-grid">
+      <div><b>${fmt(surveyShare, 0)}%</b><span>времени на съёмку</span></div>
+      <div><b>${fmt(surveyDistanceShare, 0)}%</b><span>пути на съёмку</span></div>
+      <div><b>${fmt(avgSpeed, 1)} км/ч</b><span>средняя скорость</span></div>
+      <div><b>${s.waypoints.length}</b><span>точек маршрута</span></div>
+    </div><div class="ins-current" id="ins-current">${current ? `${hm(S.t)} · ${esc(PHASE_RU[current.ph] || current.ph)} · ${fmt(current.agl, 0)} м над землёй` : "Борт вне маршрута в выбранное время"}</div></div>
     <div class="prof" id="ins-prof">${profileSVG(s)}<div class="prof-tip" id="prof-tip" hidden></div></div>
     <div class="ins-a">
       <button class="btn btn-sm" id="ins-play">${ico("play")}Проиграть</button>
@@ -1077,8 +1343,12 @@ function updateProfileCursor() {
 function setupTimeline(r) {
   if (!r.sorties || !r.sorties.length) { $("#dock").hidden = true; return; }
   $("#dock").hidden = false;
+  $("#timeline-drone").innerHTML = '<option value="">Все БПЛА</option>' + r.drones.filter(d => d.sorties.length)
+    .map(d => `<option value="${esc(d.id)}">${esc(d.id)}</option>`).join("");
+  $("#timeline-drone").value = S.timelineDrone;
   S.t0 = Math.min(...r.sorties.map((s) => s.t_takeoff)) - 300;
   S.t1 = Math.max(...r.sorties.map((s) => s.t_landing)) + 300;
+  renderTimelineEvents(r);
   S.markers = {};
   const g = L.layerGroup();
   r.drones.forEach((d) => {
@@ -1092,6 +1362,257 @@ function setupTimeline(r) {
   drawGantt();
   setTimeout(() => { map.invalidateSize(); if (!S.userMoved) fitScenario(); }, 60);
 }
+async function loadCoverage(plan) {
+  try {
+    const progress = await api(`/api/plans/${encodeURIComponent(plan.id)}/progress`);
+    if (S.plan !== plan) return;
+    S.progress = progress; S.coverageShown = 0;
+    updateCoverage();
+  } catch (e) {
+    if (S.plan === plan) {
+      $("#coverage-percent").textContent = "Покрытие по времени недоступно";
+      $("#coverage-area").textContent = "След маршрута можно просмотреть по шкале времени";
+    }
+  }
+}
+function showCoverageAnalytics(step, index, latlng) {
+  if (!S.progress) return;
+  stopPlayback();
+  clearSelection();
+  setTime(step.t);
+  const previous = S.progress.steps[index - 1];
+  const gained = step.covered_km2 == null ? null : Math.max(0, step.covered_km2 - (previous?.covered_km2 || 0));
+  const area = S.progress.allowed_km2;
+  const content = `<div class="coverage-popup"><div class="pp-t">След съёмки · ${dm(step.t)} ${hm(step.t)}</div>
+    <div class="coverage-popup-grid"><div><b>${fmt(step.pct)}%</b><span>покрыто к этому времени</span></div>
+    <div><b>${fmt(step.covered_km2, 2)} км²</b><span>из ${fmt(area, 2)} км² разрешённой площади</span></div>
+    <div><b>${fmt(gained, 3)} км²</b><span>новый участок на этом шаге</span></div>
+    <div><b>${hm(step.from)}–${hm(step.t)}</b><span>интервал съёмки</span></div></div>
+    <div class="hint">Расчёт по плану всей миссии; фактическая телеметрия не учитывается.</div></div>`;
+  L.popup({maxWidth: 310}).setLatLng(latlng).setContent(content).openOn(map);
+}
+function updateCoverage() {
+  if (!S.progress) return;
+  const steps = S.progress.steps || [], layer = S.layers.coverage;
+  while (S.coverageShown < steps.length && steps[S.coverageShown].t <= S.t) {
+    const step = steps[S.coverageShown++], index = S.coverageShown - 1;
+    if (!step._layer) step._layer = L.geoJSON(step.geometry, {
+      renderer: coverageR,
+      style: {stroke: false, fillColor: "#16a34a", fillOpacity: 0.23},
+      interactive: true, bubblingMouseEvents: false
+    });
+    if (!step._clickBound) {
+      step._layer.on("click", e => { if (e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); showCoverageAnalytics(step, index, e.latlng); });
+      step._clickBound = true;
+    }
+    layer?.addLayer(step._layer);
+  }
+  while (S.coverageShown > 0 && steps[S.coverageShown - 1].t > S.t) {
+    layer?.removeLayer(steps[--S.coverageShown]._layer);
+  }
+  const previous = steps[S.coverageShown - 1], next = steps[S.coverageShown];
+  let pct = previous?.pct ?? 0;
+  if (next && next.pct !== null && S.t > next.from && next.t > next.from) {
+    pct += (next.pct - pct) * Math.min(1, (S.t - next.from) / (next.t - next.from));
+  }
+  if (!steps.length || S.progress.final_pct === null) {
+    $("#coverage-percent").textContent = "Нет данных о покрытии по времени";
+    $("#coverage-area").textContent = "";
+    return;
+  }
+  $("#coverage-percent").textContent = `Вся миссия по плану ≈ ${fmt(pct, 1)}%`;
+  $("#coverage-area").textContent = S.progress.allowed_km2 == null ? "От разрешённой площади" :
+    `≈ ${fmt(pct * S.progress.allowed_km2 / 100, 2)} из ${fmt(S.progress.allowed_km2, 2)} км² разрешённой площади`;
+}
+function prepareObstacleGeometry(geometry) {
+  const raw = geometry?.type === "Point" ? [[geometry.coordinates]] :
+    geometry?.type === "LineString" ? [geometry.coordinates] :
+    geometry?.type === "MultiLineString" ? geometry.coordinates :
+    geometry?.type === "Polygon" ? geometry.coordinates :
+    geometry?.type === "MultiPolygon" ? geometry.coordinates.flat() : [];
+  const lines = raw.filter(line => Array.isArray(line) && line.length && line.every(p => Number.isFinite(p?.[0]) && Number.isFinite(p?.[1])));
+  if (!lines.length) return null;
+  const lat = lines[0][0][1] * Math.PI / 180, xscale = 111320 * Math.cos(lat), yscale = 111320;
+  const bbox = {minLon: Infinity, minLat: Infinity, maxLon: -Infinity, maxLat: -Infinity};
+  const edges = [];
+  for (const line of lines) {
+    for (const p of line) {
+      bbox.minLon = Math.min(bbox.minLon, p[0]); bbox.maxLon = Math.max(bbox.maxLon, p[0]);
+      bbox.minLat = Math.min(bbox.minLat, p[1]); bbox.maxLat = Math.max(bbox.maxLat, p[1]);
+    }
+    for (let j = 0; j < line.length; j++) {
+      const c = [line[j][0] * xscale, line[j][1] * yscale];
+      const q = line[j + 1] || line[j], d = [q[0] * xscale, q[1] * yscale];
+      edges.push({c, d, minx: Math.min(c[0], d[0]), maxx: Math.max(c[0], d[0]),
+        miny: Math.min(c[1], d[1]), maxy: Math.max(c[1], d[1])});
+    }
+  }
+  return {bbox, edges, xscale, yscale};
+}
+function sortieRouteBounds(sortie) {
+  const W = sortie.waypoints || [];
+  const b = {minLon: Infinity, minLat: Infinity, maxLon: -Infinity, maxLat: -Infinity};
+  for (const p of W) {
+    b.minLon = Math.min(b.minLon, p[0]); b.maxLon = Math.max(b.maxLon, p[0]);
+    b.minLat = Math.min(b.minLat, p[1]); b.maxLat = Math.max(b.maxLat, p[1]);
+  }
+  return b;
+}
+function nearestObstacleOnSortie(sortie, geometry, routeBounds) {
+  const obstacle = geometry?.edges ? geometry : prepareObstacleGeometry(geometry);
+  const W = sortie.waypoints || [];
+  if (!obstacle || W.length < 2) return null;
+  const {bbox, edges, xscale, yscale} = obstacle;
+  const b = routeBounds || sortieRouteBounds(sortie);
+  const lonPad = 250 / Math.max(xscale, 1), latPad = 250 / yscale;
+  if (b.maxLon < bbox.minLon - lonPad || b.minLon > bbox.maxLon + lonPad ||
+      b.maxLat < bbox.minLat - latPad || b.minLat > bbox.maxLat + latPad) return null;
+  const xy = p => [p[0] * xscale, p[1] * yscale];
+  const closest = (p, a, b) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const u = dx || dy ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy))) : 0;
+    return {u, d2: (p[0] - a[0] - u * dx) ** 2 + (p[1] - a[1] - u * dy) ** 2};
+  };
+  let best = null;
+  for (let i = 1; i < W.length; i++) {
+    if (W[i - 1][5] === "ground" && W[i][5] === "ground") continue;
+    const a = xy(W[i - 1]), b = xy(W[i]);
+    const minx = Math.min(a[0], b[0]), maxx = Math.max(a[0], b[0]);
+    const miny = Math.min(a[1], b[1]), maxy = Math.max(a[1], b[1]);
+    if (maxx < bbox.minLon * xscale - 250 || minx > bbox.maxLon * xscale + 250 ||
+        maxy < bbox.minLat * yscale - 250 || miny > bbox.maxLat * yscale + 250) continue;
+    for (const edge of edges) {
+      if (maxx < edge.minx - 250 || minx > edge.maxx + 250 ||
+          maxy < edge.miny - 250 || miny > edge.maxy + 250) continue;
+      const {c, d} = edge;
+      const candidates = [closest(c, a, b), closest(d, a, b),
+        {...closest(a, c, d), u: 0}, {...closest(b, c, d), u: 1}];
+      const rx = b[0] - a[0], ry = b[1] - a[1], ox = d[0] - c[0], oy = d[1] - c[1];
+      const cross = rx * oy - ry * ox;
+      if (Math.abs(cross) > 1e-9) {
+        const qx = c[0] - a[0], qy = c[1] - a[1];
+        const u = (qx * oy - qy * ox) / cross, v = (qx * ry - qy * rx) / cross;
+        if (u >= 0 && u <= 1 && v >= 0 && v <= 1) candidates.push({u, d2: 0});
+      }
+      for (const item of candidates) if (!best || item.d2 < best.d2) {
+        best = {d2: item.d2, t: W[i - 1][4] + item.u * (W[i][4] - W[i - 1][4])};
+      }
+    }
+  }
+  return best && {t: best.t, distance_m: Math.sqrt(best.d2)};
+}
+function collectTimelineEvents(plan, scenario, t0, t1) {
+  const events = [];
+  const routeBounds = new Map((plan.sorties || []).map(sortie => [sortie, sortieRouteBounds(sortie)]));
+  const obstaclesBySortie = new Map();
+  const add = (t, kind, label, droneId = "") => { if (Number.isFinite(t) && t >= t0 && t <= t1) events.push({t, kind, label, droneId}); };
+  for (const s of plan.sorties || []) {
+    add(s.t_takeoff, "flight", `Вылет ${s.id}, ${s.drone_id}: взлёт`, s.drone_id);
+    add(s.t_landing, "flight", `Вылет ${s.id}, ${s.drone_id}: посадка`, s.drone_id);
+    const surveys = (s.phases || []).filter(p => p.phase === "survey");
+    if (surveys.length) {
+      add(Math.min(...surveys.map(p => p.t_start)), "survey", `Вылет ${s.id}: начало съёмки`, s.drone_id);
+      add(Math.max(...surveys.map(p => p.t_end)), "survey", `Вылет ${s.id}: завершение съёмки`, s.drone_id);
+    }
+  }
+  for (const check of plan.validation?.checks || []) for (const p of check.points || []) {
+    const prefix = check.passed ? "Контроль" : "Нарушение";
+    const droneId = (plan.sorties || []).find(s => s.id === Number(p.sortie))?.drone_id || "";
+    add(Number(p.t), check.passed ? "check" : "alert", `${prefix}: ${p.label || check.name}`, droneId);
+  }
+  let workBounds = null;
+  try {
+    if (plan.geo?.requested) workBounds = L.geoJSON(plan.geo.requested).getBounds();
+    for (const sortie of plan.sorties || []) for (const p of sortie.waypoints || []) {
+      if (workBounds) workBounds.extend([p[1], p[0]]);
+    }
+  } catch (e) { workBounds = null; }
+  for (const f of scenario?.features || []) {
+    const prop = f.properties || {};
+    if (prop.kind === "obstacle") {
+      const obstacle = prepareObstacleGeometry(f.geometry);
+      if (!obstacle) continue;
+      for (const sortie of plan.sorties || []) {
+        const near = nearestObstacleOnSortie(sortie, obstacle, routeBounds.get(sortie));
+        if (near && near.distance_m <= 250) {
+          if (!obstaclesBySortie.has(sortie)) obstaclesBySortie.set(sortie, []);
+          obstaclesBySortie.get(sortie).push({...near, name: prop.name || "без названия"});
+        }
+      }
+      continue;
+    }
+    if (prop.kind !== "no_fly" || (!prop.active_from && !prop.active_to)) continue;
+    try { if (workBounds && !L.geoJSON(f.geometry).getBounds().intersects(workBounds)) continue; } catch (e) { continue; }
+    const name = prop.name || "Временная зона";
+    if (prop.active_from) add(Date.parse(prop.active_from) / 1000, "restriction", `Начало действия зоны «${name}»`);
+    if (prop.active_to) add(Date.parse(prop.active_to) / 1000, "restriction", `Окончание действия зоны «${name}»`);
+  }
+  for (const [sortie, near] of obstaclesBySortie) {
+    const picked = [];
+    for (const item of near.sort((a, b) => a.distance_m - b.distance_m)) {
+      if (picked.every(other => Math.abs(other.t - item.t) >= 120)) picked.push(item);
+      if (picked.length === 3) break;
+    }
+    for (const item of picked) add(item.t, "obstacle",
+      `Вылет ${sortie.id}: рядом с препятствием «${item.name}» (≈ ${Math.round(item.distance_m)} м по горизонтали)`, sortie.drone_id);
+  }
+  return events.sort((a, b) => a.t - b.t).map((event, index) => ({...event, index}));
+}
+function groupTimelineEvents(events, t0, t1, slots = 32) {
+  const groups = new Map();
+  for (const event of events) {
+    const slot = Math.min(slots - 1, Math.floor((event.t - t0) / Math.max(t1 - t0, 1) * slots));
+    if (!groups.has(slot)) groups.set(slot, []);
+    groups.get(slot).push(event);
+  }
+  const rank = {alert: 6, obstacle: 5, restriction: 4, check: 3, survey: 2, flight: 1};
+  return [...groups.values()].map(items => ({events: items,
+    t: items.reduce((sum, e) => sum + e.t, 0) / items.length,
+    kind: items.reduce((best, e) => rank[e.kind] > rank[best] ? e.kind : best, "flight")}));
+}
+function renderTimelineEvents(plan) {
+  S.timelineEvents = collectTimelineEvents(plan, S.scenario, S.t0, S.t1);
+  const visibleEvents = S.timelineDrone ? S.timelineEvents.filter(event => event.droneId === S.timelineDrone) : S.timelineEvents;
+  const slots = Math.max(8, Math.min(32, Math.floor(($("#timeline-markers").clientWidth || 800) / 26)));
+  S.timelineGroups = groupTimelineEvents(visibleEvents, S.t0, S.t1, slots);
+  $("#timeline-markers").innerHTML = S.timelineGroups.map((group, index) => {
+    const pct = Math.max(0, Math.min(100, (group.t - S.t0) / (S.t1 - S.t0) * 100));
+    const label = group.events.length === 1 ? group.events[0].label : `${group.events.length} ${plural(group.events.length, "событие", "события", "событий")}`;
+    const time = group.events.length === 1 ? `${dm(group.t)} ${hm(group.t)}` :
+      `${dm(group.events[0].t)} ${hm(group.events[0].t)} — ${dm(group.events[group.events.length - 1].t)} ${hm(group.events[group.events.length - 1].t)}`;
+    return `<button class="timeline-marker event-${group.kind}" type="button" style="left:${pct}%" data-group="${index}"
+      aria-label="${esc(time)}: ${esc(label)}" title="${esc(time)} · ${esc(label)}. Нажмите для подробностей"></button>`;
+  }).join("");
+  $$("#timeline-markers button").forEach(button => button.addEventListener("click", () => showTimelineGroup(+button.dataset.group)));
+}
+function showTimelineGroup(index) {
+  const group = S.timelineGroups[index]; if (!group) return;
+  const pop = $("#timeline-event-popover");
+  pop.hidden = false;
+  pop.innerHTML = `<strong>${group.events.length === 1 ? "Событие" : `${group.events.length} ${plural(group.events.length, "событие", "события", "событий")} по плану`}</strong>` +
+    group.events.map(event => `<button type="button" data-event="${event.index}"><span>${esc(dm(event.t))} ${esc(hm(event.t))}</span>${esc(event.label)}</button>`).join("");
+  $$("button[data-event]", pop).forEach(button => button.addEventListener("click", () => {
+    const event = S.timelineEvents[+button.dataset.event];
+    S.highlightedEvent = event;
+    setTime(event.t); pop.hidden = true;
+  }));
+}
+function updateTimelineCaption() {
+  const events = S.timelineDrone ? S.timelineEvents.filter(event => event.droneId === S.timelineDrone) : S.timelineEvents;
+  const current = S.highlightedEvent;
+  const atTime = events.find(event => Math.abs(event.t - S.t) < 1);
+  const next = events.find(event => event.t > S.t);
+  const active = current && Math.abs(current.t - S.t) < 30 ? current : atTime;
+  const label = active ? `Сейчас ${dm(active.t)} ${hm(active.t)} · ${active.label}` :
+    next ? `Далее ${dm(next.t)} ${hm(next.t)} · ${next.label}` : "События миссии завершены";
+  if ($("#timeline-next").textContent !== label) {
+    $("#timeline-next").textContent = label;
+    $("#timeline-next").title = label;
+  }
+  for (let i = 0; i < S.timelineGroups.length; i++) {
+    $("#timeline-markers").children[i]?.classList.toggle("past", S.timelineGroups[i].t < S.t);
+  }
+}
 function posAt(s, t) {
   const W = s.waypoints;
   if (t < W[0][4] || t > W[W.length - 1][4]) return null;
@@ -1103,15 +1624,18 @@ function posAt(s, t) {
 function setTime(t) {
   if (!S.plan || !S.plan.sorties) return;
   S.t = Math.max(S.t0, Math.min(S.t1, t));
+  updateRouteProgress();
+  updateCoverage();
   $("#slider").value = Math.round(1000 * (S.t - S.t0) / (S.t1 - S.t0));
   $("#clock-t").textContent = hms(S.t);
   $("#clock-d").textContent = dm(S.t);
+  updateTimelineCaption();
   const g = S.layers.drones;
   let air = 0;
   for (const d of S.plan.drones) {
     const mk = S.markers[d.id];
     const s = S.plan.sorties.find((x) => x.drone_id === d.id && x.t_takeoff <= S.t && S.t <= x.t_landing);
-    const p = s && !S.hidden.has(d.id) && posAt(s, S.t);
+    const p = s && isDroneVisible(d.id) && posAt(s, S.t);
     if (p) {
       air++;
       mk.setLatLng([p.lat, p.lon]);
@@ -1119,10 +1643,15 @@ function setTime(t) {
       if (g && !g.hasLayer(mk)) g.addLayer(mk);
     } else if (g && g.hasLayer(mk)) g.removeLayer(mk);
   }
-  $("#dock-live").innerHTML = `<span class="live ${air ? "on" : ""}"></span>в воздухе: <b>${air}</b>`;
+  $("#dock-live").innerHTML = `<span class="live ${air ? "on" : ""}"></span>${S.sel !== null && !S.showOtherDrones ? "на карте в воздухе" : "в воздухе"}: <b>${air}</b>`;
   const cur = $("#gantt .g-cursor");
   if (cur && S.gx) { const x = S.gx(S.t); cur.setAttribute("x1", x); cur.setAttribute("x2", x); }
   updateProfileCursor();
+  const current = $("#ins-current");
+  if (current && S.sel !== null) {
+    const sortie = S.plan.sorties.find(s => s.id === S.sel), position = sortie && posAt(sortie, S.t);
+    current.textContent = position ? `${hm(S.t)} · ${PHASE_RU[position.ph] || position.ph} · ${fmt(position.agl, 0)} м над землёй` : "Борт вне маршрута в выбранное время";
+  }
 }
 $("#slider").addEventListener("input", (e) => setTime(S.t0 + (S.t1 - S.t0) * (+e.target.value) / 1000));
 chips("#speed", (v) => { S.speed = +v; });
@@ -1156,13 +1685,33 @@ function stopPlayback() {
   $("#play").innerHTML = ico("play");
 }
 $("#play").addEventListener("click", togglePlay);
-$("#dock-toggle").addEventListener("click", () => { $("#dock").classList.toggle("collapsed"); store.set("dock.collapsed", $("#dock").classList.contains("collapsed")); setTimeout(() => map.invalidateSize(), 50); });
+$("#timeline-drone").addEventListener("change", e => {
+  S.timelineDrone = e.target.value;
+  if (S.plan) { renderTimelineEvents(S.plan); updateTimelineCaption(); drawGantt(); }
+});
+function setTimelineExpanded(expanded) {
+  const dock = $("#dock"), button = $("#dock-expand");
+  dock.classList.toggle("expanded", expanded);
+  if (expanded) dock.classList.remove("collapsed");
+  button.setAttribute("aria-pressed", String(expanded));
+  button.title = expanded ? "Вернуть обычную высоту таймлайна" : "Развернуть таймлайн на всю высоту";
+  button.setAttribute("aria-label", button.title);
+  requestAnimationFrame(() => { drawGantt(); map.invalidateSize(); });
+}
+$("#dock-expand").addEventListener("click", () => setTimelineExpanded(!$("#dock").classList.contains("expanded")));
+document.addEventListener("click", e => { if (!e.target.closest(".timeline-control")) $("#timeline-event-popover").hidden = true; });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { $("#timeline-event-popover").hidden = true; if ($("#dock").classList.contains("expanded")) setTimelineExpanded(false); } });
+new ResizeObserver(() => {
+  if (S.plan && !$("#dock").hidden) { renderTimelineEvents(S.plan); updateTimelineCaption(); }
+}).observe($(".timeline-track"));
+$("#dock-toggle").addEventListener("click", () => { if ($("#dock").classList.contains("expanded")) setTimelineExpanded(false); $("#dock").classList.toggle("collapsed"); store.set("dock.collapsed", $("#dock").classList.contains("collapsed")); setTimeout(() => map.invalidateSize(), 50); });
 
 function drawGantt() {
   const r = S.plan;
   if (!r || !r.sorties || !r.sorties.length) return;
   const box = $("#gantt");
-  const W = Math.max(640, box.clientWidth - 26), rowH = 22, left = 104, right = 56, top = 22;
+  const drones = S.timelineDrone ? r.drones.filter(d => d.id === S.timelineDrone) : r.drones;
+  const W = Math.max(640, box.clientWidth - 26), rowH = $("#dock").classList.contains("expanded") ? Math.min(72, Math.max(30, Math.floor((box.clientHeight - 36) / Math.max(drones.length, 1)))) : 22, left = 104, right = 56, top = 22;
   const segs = [];
   for (const [a, b] of r.sorties.map((s) => [s.t_takeoff, s.t_landing]).sort((x, y) => x[0] - y[0])) {
     if (segs.length && a - segs[segs.length - 1][1] < 3 * 3600) segs[segs.length - 1][1] = Math.max(segs[segs.length - 1][1], b);
@@ -1173,7 +1722,6 @@ function drawGantt() {
   const scale = (W - left - right - gap * (segs.length - 1)) / total;
   const gx = (t) => { let x = left; for (const [a, b] of segs) { if (t <= b) return x + Math.max(0, t - a) * scale; x += (b - a) * scale + gap; } return x - gap; };
   S.gx = gx;
-  const drones = r.drones;
   const H = top + drones.length * rowH + 4;
   let svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
   const hourStep = scale * 3600 < 38 ? 2 : 1;
@@ -1189,9 +1737,9 @@ function drawGantt() {
   drones.forEach((d, i) => {
     const y = top + i * rowH, off = S.hidden.has(d.id), col = S.colors[d.id];
     svg += `<g class="g-row"><rect class="g-bg" x="0" y="${y}" width="${W}" height="${rowH}" fill="transparent"/>
-      <circle cx="8" cy="${y + rowH / 2}" r="4" fill="${col}" opacity="${off ? 0.3 : 1}"/><text class="g-lbl" x="18" y="${y + 15}" opacity="${off ? 0.4 : 1}">${esc(d.id)}</text>
-      <text class="g-sub" x="${left - 8}" y="${y + 15}" text-anchor="end">${SHORT[d.model] || ""}</text>
-      <text class="g-sub" x="${W - 4}" y="${y + 15}" text-anchor="end">${d.sorties.length ? fmt(d.flight_h, 1) + " ч" : "—"}</text>`;
+      <circle cx="8" cy="${y + rowH / 2}" r="4" fill="${col}" opacity="${off ? 0.3 : 1}"/><text class="g-lbl" x="18" y="${y + rowH / 2 + 4}" opacity="${off ? 0.4 : 1}">${esc(d.id)}</text>
+      <text class="g-sub" x="${left - 8}" y="${y + rowH / 2 + 4}" text-anchor="end">${SHORT[d.model] || ""}</text>
+      <text class="g-sub" x="${W - 4}" y="${y + rowH / 2 + 4}" text-anchor="end">${d.sorties.length ? fmt(d.flight_h, 1) + " ч" : "—"}</text>`;
     for (const s of r.sorties.filter((x) => x.drone_id === d.id)) {
       const sel = S.sel === s.id;
       const op = off ? 0.15 : (S.sel === null || sel ? 1 : 0.3);
@@ -1224,7 +1772,8 @@ function drawGantt() {
   });
 }
 new ResizeObserver(() => drawGantt()).observe($("#gantt"));
-new ResizeObserver(() => { $("#stage").style.setProperty("--dock-h", `${$("#dock").hidden ? 0 : $("#dock").offsetHeight}px`); }).observe($("#dock"));
+new ResizeObserver(() => { $("#stage").style.setProperty("--dock-h", `${$("#dock").hidden || $("#dock").classList.contains("expanded") ? 0 : $("#dock").offsetHeight}px`); }).observe($("#dock"));
+new ResizeObserver(() => { if (S.plan && !$("#dock").hidden) drawGantt(); }).observe($("#gantt"));
 // клик по пустому месту расписания — перейти ко времени
 $("#gantt").addEventListener("click", (e) => {
   if (e.target.closest(".g-bar") || !S.gx || !S.plan) return;
@@ -1236,44 +1785,64 @@ $("#gantt").addEventListener("click", (e) => {
 
 // ================================================================ история и сравнение
 async function refreshHistory(preselect = []) {
+  const selected = new Set(preselect.length ? preselect : $$("#history .hc").filter((c) => c.checked).map((c) => c.value));
   let list;
-  try { list = await api("/api/plans"); } catch (e) { return; }
-  if (!list.length) { $("#history").innerHTML = `<div class="empty"><div class="empty-ico">${icon("history")}</div><div class="empty-t">История пуста</div><div class="hint">Здесь появятся рассчитанные планы — их можно открыть и сравнить.</div></div>`; return; }
-  $("#history").innerHTML = `<div class="cmp-actions"><button class="btn btn-sm" id="do-cmp">${ico("compare")}Сравнить отмеченные</button><span class="hint">отметьте 2+ плана</span></div>` +
-    list.map((p) => { const s = p.summary || {}; const ok = p.status === "ok" && p.validation_passed;
+  try { list = await api("/api/plans"); } catch (e) { toast("Не удалось загрузить историю: " + e.message, "bad"); return; }
+  if (!list.length) {
+    $("#history-actions").innerHTML = "";
+    $("#cmp").innerHTML = "";
+    $("#history").innerHTML = `<div class="empty"><div class="empty-ico">${icon("history")}</div><div class="empty-t">История пуста</div><div class="hint">Здесь появятся рассчитанные планы — их можно открыть и сравнить.</div></div>`;
+    return;
+  }
+  $("#history-actions").innerHTML = `<div class="cmp-actions"><button class="btn btn-sm" id="do-cmp" type="button">${ico("compare")}Сравнить отмеченные</button><span class="hint" id="cmp-selection" aria-live="polite"></span></div>`;
+  $("#history").innerHTML = list.map((p) => { const s = p.summary || {}; const ok = p.status === "ok" && p.validation_passed;
       const partial = p.status === "infeasible" && p.validation_passed && s.sorties > 0;
       const statusText = ok ? "✓" : partial ? "частично" : p.status === "infeasible" && !s.sorties ? "невыполним" : "!";
-      return `<div class="hist ${S.plan && S.plan.id === p.id ? "cur" : ""}"><input type="checkbox" class="hc" value="${p.id}" ${preselect.includes(p.id) ? "checked" : ""} aria-label="Отметить для сравнения">
-      <div><div class="hist-h"><a href="#" data-load="${p.id}">${p.objective === "time" ? "Минимум времени" : "Минимум налета"}</a>
+      return `<div class="hist ${S.plan && S.plan.id === p.id ? "cur" : ""}"><input type="checkbox" class="hc" value="${p.id}" ${selected.has(p.id) ? "checked" : ""} aria-label="Отметить для сравнения">
+      <div><div class="hist-h"><a href="#" data-load="${p.id}">${objectiveName(p.objective)}</a>
         <span class="badge ${ok ? "" : partial ? "warn" : "bad"}">${statusText}</span></div>
         <div class="hint">${esc((p.scenario_name || "").slice(0, 46))} · ${p.created ? new Date(p.created).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}</div>
         <div class="hist-m"><span><b>${fmt(s.makespan_h)}</b> ч работ</span><span><b>${fmt(s.flight_hours)}</b> ч налета</span><span><b>${s.sorties ?? "—"}</b> вылетов</span>${s.coverage_allowed_pct != null ? `<span>покрытие <b>${fmt(s.coverage_allowed_pct)}%</b></span>` : ""}</div></div>
       <button class="eye" data-del="${p.id}" title="Удалить из истории">${icon("trash")}</button></div>`; }).join("");
-  $$("[data-load]").forEach((a) => a.addEventListener("click", async (e) => { e.preventDefault(); await openPlan(a.dataset.load); switchTab("result"); }));
-  $$("[data-del]").forEach((b) => b.addEventListener("click", async () => {
+  const updateSelection = (clearCompare = false) => {
+    const count = $$("#history .hc").filter((c) => c.checked).length;
+    $("#do-cmp").disabled = count < 2;
+    $("#cmp-selection").textContent = count ? `Выбрано: ${count}${count < 2 ? " · нужно минимум 2" : ""}` : "Отметьте 2+ плана";
+    if (clearCompare || count < 2) $("#cmp").innerHTML = "";
+  };
+  $$("#history .hc").forEach((c) => c.addEventListener("change", () => updateSelection(true)));
+  updateSelection();
+  $$("#history [data-load]").forEach((a) => a.addEventListener("click", async (e) => { e.preventDefault(); await openPlan(a.dataset.load); switchTab("overview"); }));
+  $$("#history [data-del]").forEach((b) => b.addEventListener("click", async () => {
     try { await api(`/api/plans/${b.dataset.del}`, { method: "DELETE" }); if (S.plan && S.plan.id === b.dataset.del) clearPlan(); refreshHistory(); } catch (e) { toast(e.message, "bad"); }
   }));
   $("#do-cmp").addEventListener("click", async () => {
-    const ids = $$(".hc").filter((c) => c.checked).map((c) => c.value);
-    if (ids.length < 2) { toast("Отметьте хотя бы два плана"); return; }
-    renderCompare(await Promise.all(ids.map((i) => api(`/api/plans/${i}`))));
+    const ids = $$("#history .hc").filter((c) => c.checked).map((c) => c.value);
+    if (ids.length < 2) return;
+    const button = $("#do-cmp");
+    button.disabled = true;
+    $("#cmp").innerHTML = `<div class="hint">Загружаем планы для сравнения…</div>`;
+    try { renderCompare(await Promise.all(ids.map((i) => api(`/api/plans/${encodeURIComponent(i)}`)))); }
+    catch (e) { $("#cmp").innerHTML = `<div class="hint">Не удалось сравнить планы.</div>`; toast("Не удалось сравнить планы: " + e.message, "bad"); }
+    finally { updateSelection(); }
   });
 }
 function renderCompare(plans) {
   plans = plans.filter((p) => p.summary && p.summary.makespan_h !== undefined);
-  if (plans.length < 2) { $("#cmp").innerHTML = ""; return; }
+  if (plans.length < 2) { $("#cmp").innerHTML = `<div class="hint">Для сравнения нужны два рассчитанных плана с итоговыми показателями.</div>`; return; }
   const rows = [
     ["Время работ, ч", (p) => p.summary.makespan_h, "min"], ["Суммарный налет, ч", (p) => p.summary.flight_hours, "min"],
     ["Вылетов", (p) => p.summary.sorties, "min"], ["Путь, км", (p) => p.summary.total_km, "min"],
     ["Покрытие, %", (p) => p.summary.coverage_allowed_pct, "max"], ["Бортов в работе", (p) => p.summary.drones_used, null],
   ];
-  const head = plans.map((p) => `<th class="num">${p.params.objective === "time" ? "Время" : "Налет"}<div class="hint">${esc(p.id)}</div></th>`).join("");
+  const head = plans.map((p) => `<th class="num">${esc(objectiveName(p.params?.objective || p.summary.objective))}</th>`).join("");
   const body = rows.map(([n, f, best]) => {
-    const vals = plans.map((p) => Math.round(f(p) * 10) / 10);
-    const b = best === "min" ? Math.min(...vals) : best === "max" ? Math.max(...vals) : null;
+    const vals = plans.map((p) => f(p) == null ? NaN : Math.round(f(p) * 10) / 10);
+    const finite = vals.filter(Number.isFinite);
+    const b = finite.length && best === "min" ? Math.min(...finite) : finite.length && best === "max" ? Math.max(...finite) : null;
     return `<tr><td>${n}</td>${vals.map((v) => `<td class="num ${b !== null && v === b ? "best" : ""}">${fmt(v)}</td>`).join("")}</tr>`;
   }).join("");
-  const shares = `<tr><td>Доли площади</td>${plans.map((p) => `<td class="num">${Object.entries(p.summary.shares).filter(([, v]) => v > 0).map(([k, v]) => `${SHORT[k] || k} ${Math.round(v * 100)}%`).join("<br>")}</td>`).join("")}</tr>`;
+  const shares = `<tr><td>Доли площади</td>${plans.map((p) => `<td class="num">${Object.entries(p.summary.shares || p.summary.allocation_shares || {}).filter(([, v]) => v > 0).map(([k, v]) => `${esc(SHORT[k] || k)} ${Math.round(v * 100)}%`).join("<br>") || "—"}</td>`).join("")}</tr>`;
   const checks = `<tr><td>Crash-тест</td>${plans.map((p) => `<td class="num">${p.validation?.passed ? '<span class="best">✓ пройден</span>' : "✖"}</td>`).join("")}</tr>`;
   $("#cmp").innerHTML = `<div class="section-h">Сравнение</div><div class="table-box" style="max-height:none"><table class="t"><tr><th></th>${head}</tr>${body}${shares}${checks}</table></div>
     <div class="hint" style="margin-top:6px">Зеленым — лучшее значение в строке.</div>`;
@@ -1381,12 +1950,14 @@ $("#help-pop").addEventListener("click", (e) => { if (e.target.id === "help-pop"
 document.addEventListener("keydown", (e) => {
   const el = document.activeElement;
   const typing = el.closest("input, select, textarea, button, a, [role=radio], [role=checkbox], [role=slider], [contenteditable=true]");
+  if (el.closest("#assistant") && e.key !== "Escape") return;
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); onRun([S.objective]); return; }
   if (e.key === "Escape") {
+    if (!$("#assistant").hidden) { window.product?.closeAssistant(); return; }
     if (!$("#help-pop").hidden) helpOpen(false);
     else if (busy) cancelRun();
     else if (S.addSite) setAddSite(false);
-    else { clearSelection(); $("#layers-pop").hidden = true; }
+    else { clearSelection(); showLayers(false); }
     return;
   }
   if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1395,22 +1966,28 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "ArrowLeft" && el.id !== "compass") { e.preventDefault(); stepSortie(-1); }
   else if (e.key === "?") helpOpen($("#help-pop").hidden);
   else if (e.key === "1") switchTab("task");
-  else if (e.key === "2") switchTab("result");
-  else if (e.key === "3") switchTab("history");
+  else if (e.key === "2") switchTab("overview");
+  else if (e.key === "3") switchTab("result");
+  else if (e.key === "4") switchTab("history");
   else if (e.key === "f" || e.key === "F" || e.key === "а" || e.key === "А") { S.userMoved = false; fitScenario(); }
 });
 $("#run").addEventListener("click", () => onRun([S.objective]));
 $("#run2").addEventListener("click", () => onRun([S.objective]));
-$("#compare").addEventListener("click", () => onRun(["time", "flight"]));
+$("#compare").addEventListener("click", () => onRun(["time", "flight", "balanced"]));
 
 // ================================================================ старт
 (async function init() {
   paintIcons();
-  S.colorMode = store.get("colormode", "drone"); setChip("#colormode", S.colorMode);
+  updateOnboarding();
   applyTheme(store.get("theme", window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
-  if (store.get("dock.collapsed", false)) $("#dock").classList.add("collapsed");
   setWindDir(250);
   try {
+    const session = await api("/api/session");
+    storageScope = session.id;
+    setZoneLabelsVisible(!store.get("off.zoneLabels", false), false);
+    setPanelVisible(!store.get("panel.collapsed", false), false);
+    S.colorMode = store.get("colormode", "drone"); setChip("#colormode", S.colorMode);
+    if (store.get("dock.collapsed", false)) $("#dock").classList.add("collapsed");
     S.catalog = await api("/api/catalog");
     legend();
     const savedF = store.get("fleet", null), savedB = store.get("bats", null);
@@ -1423,6 +2000,11 @@ $("#compare").addEventListener("click", () => onRun(["time", "flight"]));
     $("#scenario").innerHTML = sc.map((x) => `<option value="${x.id}">${esc(x.name)}</option>`).join("");
     // последний план — сразу на экран вместе со своим сценарием; иначе — сохраненный/первый демо-сценарий
     const hist = await api("/api/plans");
+    if (hist.length >= 2 && missionRunAttempts < 2) {
+      missionRunAttempts = 2;
+      store.set("onboarding.attempts", missionRunAttempts);
+      updateOnboarding();
+    }
     const last = hist.find((h) => h.summary && h.summary.makespan_h !== undefined && h.has_scenario);
     if (last) { await openPlan(last.id); }
     else {

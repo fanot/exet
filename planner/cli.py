@@ -25,7 +25,7 @@ def main(argv=None):
     ap.add_argument("--fleet", default="geoscan_201=2,geoscan_gemini=4,geoscan_801=2", help="модель=кол-во через запятую")
     ap.add_argument("--survey", default="rgb", choices=["rgb", "multispectral", "ir", "lidar", "geophysics"])
     ap.add_argument("--gsd", type=float, default=None, help="GSD, см/пикс")
-    ap.add_argument("--objective", default="time", choices=["time", "flight"])
+    ap.add_argument("--objective", default="time", choices=["time", "flight", "balanced"])
     ap.add_argument("--deadline", type=float, default=None, help="Срок, ч")
     ap.add_argument("--start", default=None, help="Начало работ, ISO 8601")
     ap.add_argument("--wind", type=float, default=4.0, help="Ветер у земли, м/с")

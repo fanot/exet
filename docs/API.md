@@ -6,9 +6,17 @@
 
 ## Методы
 
+Планы и задачи принадлежат анонимной сессии браузера. Программный клиент должен сохранять cookie: сначала `GET /api/session`, затем все запросы через один `httpx.Client` / cookie jar. Для curl используйте `-c cookies.txt -b cookies.txt` при каждом запросе. Чужой или старый план без назначенного владельца возвращает 404. Cookie — секрет доступа; не публикуйте его.
+
+`params.objective`: `time`, `flight` или `balanced` (критерий Чебышёва: `max(0.5*t, 0.5*f) + 0.01*(t+f)`, время и налёт нормированы по диапазону кандидатов; штрафы за срок и износ добавляются отдельно). Подробное определение — [FINAL_SPRINT.md](FINAL_SPRINT.md).
+
 | Метод | Путь | Назначение |
 |---|---|---|
 | GET | `/api/health` | Проверка работоспособности |
+| GET | `/api/session` | Установить cookie и получить публичную метку текущей анонимной сессии |
+| GET | `/api/assistant/status` | Наличие ключа, выбранная модель и число документов базы знаний |
+| GET | `/api/assistant/docs/{slug}` | Документ из фиксированного списка базы знаний |
+| POST | `/api/assistant/chat` | Диалог с OpenRouter: `messages`, необязательные `plan_id`, `draft`, `scenario_name`, `selected_sortie`, `active_tab`. План проверяется по сессии. Ответ — SSE `meta/delta/action/notice/done/error`; [контракт и настройка](ASSISTANT.md) |
 | GET | `/api/catalog` | ТТХ БВС, сенсоры, типы съемки, нормативы |
 | GET | `/api/scenarios`, `/api/scenarios/{id}` | Демо-сценарии (GeoJSON) |
 | POST | `/api/plan` | Запуск расчета: `{scenario: GeoJSON, params: MissionParams}` → `{job_id}` |
@@ -22,6 +30,8 @@
 | GET | `/api/plans/{id}/scenario` | Исходный сценарий плана (GeoJSON) — план из истории открывается со своей картой |
 | GET | `/api/plans/{id}/export/{fmt}` | `kml`, `geojson`, `csv`, `zip` (всё вместе, плюс QGroundControl `.plan` по вылетам и файлы по бортам), `qgc` (один вылет, `?sortie=N`). Параметр `?drone=GEM-1` — индивидуальное задание одного борта |
 | GET | `/api/plans/{id}/brief` | Полетное задание для печати (HTML, A4): маршрут, этапы, ключевые точки с координатами, профиль высот. `?drone=` — один борт |
+| GET | `/api/plans/{id}/report` | Общий отчёт по расчётной миссии, включая невыполнимые планы (JSON) |
+| GET | `/api/plans/{id}/report/print` | Общий отчёт в HTML для печати / сохранения PDF из браузера |
 | POST | `/api/validate` | Независимая проверка произвольного плана на сценарии |
 
 **Ход расчета.** Пока задача выполняется, `GET /api/jobs/{job_id}` возвращает:
@@ -34,13 +44,13 @@
 Пример загрузки слоями (область отдельным файлом, препятствия организаторов — другим):
 
 ```bash
-curl -s -X POST localhost:8000/api/plan/upload -F "files=@область.geojson" -F "files=@высотные препятствия Приморский край.kml" -F 'params={"fleet":[{"model":"geoscan_gemini","count":4}],"start_time":"2026-09-25T09:00:00+10:00"}'
+curl -s -c cookies.txt -b cookies.txt -X POST localhost:8000/api/plan/upload -F "files=@область.geojson" -F "files=@высотные препятствия Приморский край.kml" -F 'params={"fleet":[{"model":"geoscan_gemini","count":4}],"start_time":"2026-09-25T09:00:00+10:00"}'
 ```
 
 Пример:
 
 ```bash
-curl -s -X POST localhost:8000/api/plan -H 'Content-Type: application/json' -d @- <<'JSON'
+curl -s -c cookies.txt -b cookies.txt -X POST localhost:8000/api/plan -H 'Content-Type: application/json' -d @- <<'JSON'
 {"scenario": <GeoJSON>, "params": {
   "survey_type": "rgb", "gsd_cm": 3, "objective": "time",
   "fleet": [{"model": "geoscan_201", "count": 2}, {"model": "geoscan_gemini", "count": 4}],
@@ -97,7 +107,7 @@ KML: принимаются Placemark с Polygon (outer/inner), LineString, Poin
 | `fleet[]` | `{model, count, batteries}` | — |
 | `objective` | `time` или `flight` | `time` |
 | `deadline_h` | ч | нет |
-| `takeoff_weight_h` | ч налета за один взлет (износ) | 0 |
+| `takeoff_weight_h` | ч налета за один взлет (износ), для `flight` и `balanced` | 0 |
 | `start_time` | ISO 8601 | завтра, 09:00 МСК |
 | `wind_speed_ms`, `wind_dir_deg` | м/с на 10 м; откуда дует, ° | 4; 270 |
 | `cloud_base_m` | м AGL | нет |

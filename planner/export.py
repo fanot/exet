@@ -226,10 +226,13 @@ def to_zip(result: dict, catalog) -> bytes:
             z.writestr(f"drones/{d['id']}.geojson", json.dumps(to_geojson(one), ensure_ascii=False))
             z.writestr(f"drones/{d['id']}_brief.html", to_brief_html(result, d["id"]))
         z.writestr("brief.html", to_brief_html(result))
+        from .report import report_html
+        z.writestr("report.html", report_html(result))
         z.writestr("README.txt", "Состав архива:\n plan.geojson — все вылеты (WGS-84, высоты AMSL, coord_times)\n"
                                  " plan.kml — то же для Google Earth/Geoscan Planner (gx:Track — воспроизведение во времени)\n"
                                  " schedule.csv — расписание вылетов\n qgc/*.plan — полетные задания QGroundControl по вылетам\n"
                                  " drones/<борт>.kml|.geojson — индивидуальное полетное задание каждого БВС\n"
                                  " drones/<борт>_brief.html, brief.html — полетные задания для печати (маршрут, этапы, ключевые точки, профиль высот)\n"
-                                 " summary.json — сводка, проверка ограничений, рекомендации\n")
+                                 " summary.json — сводка, проверка ограничений, рекомендации\n"
+                                 " report.html — общий отчёт по расчётной миссии: условия, высоты, проблемы и рекомендации; печать / PDF из браузера\n")
     return buf.getvalue()

@@ -35,10 +35,10 @@ class MissionParams(BaseModel):
     front_overlap: Optional[float] = Field(None, ge=0.5, le=0.95, description="Продольное перекрытие, доля 0..1 (по умолчанию 0.70)")
     side_overlap: Optional[float] = Field(None, ge=0.0, le=0.9, description="Поперечное перекрытие между галсами, доля 0..1 (по умолчанию 0.50)")
     fleet: List[FleetItem] = Field(..., description="Доступный парк БВС")
-    objective: Literal["time", "flight"] = Field(
-        "time", description="Критерий: time — минимум общего времени выполнения; flight — минимум суммарного налета")
-    deadline_h: Optional[float] = Field(None, gt=0, le=240, description="Ограничение на длительность работ, ч (для критерия flight)")
-    takeoff_weight_h: float = Field(0.0, ge=0, le=5, description="Эквивалент одного взлета-посадки в часах налета (износ), ч")
+    objective: Literal["time", "flight", "balanced"] = Field(
+        "time", description="Критерий: time — минимум общего времени; flight — минимум налета; balanced — критерий Чебышёва с равными весами времени и налета, нормированных по диапазону кандидатов")
+    deadline_h: Optional[float] = Field(None, gt=0, le=240, description="Ограничение на длительность работ, ч")
+    takeoff_weight_h: float = Field(0.0, ge=0, le=5, description="Эквивалент одного взлета-посадки в часах налета (износ) для flight и balanced, ч")
     start_time: datetime = Field(default_factory=_default_start, description="Начало работ (ISO 8601 с часовым поясом)")
     wind_speed_ms: float = Field(4.0, ge=0, le=40, description="Скорость ветра у земли (10 м), м/с")
     wind_dir_deg: float = Field(270.0, ge=0, lt=360, description="Направление ветра — откуда дует, градусы от севера по часовой")

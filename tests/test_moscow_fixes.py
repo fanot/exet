@@ -45,7 +45,7 @@ def test_accepted_cancel_prevents_publication_after_early_failure(monkeypatch, t
     monkeypatch.setattr(api, 'PLANS', tmp_path)
     monkeypatch.setattr(api, 'PLAN_SCENARIOS', tmp_path / 'scenarios')
     (tmp_path / 'scenarios').mkdir()
-    job = {'job_id': 'cancel-regression', 'status': 'queued', 'progress': 0., 'message': 'В очереди'}
+    job = {'job_id': 'cancel-regression', 'owner': api.owner.get(), 'status': 'queued', 'progress': 0., 'message': 'В очереди'}
     monkeypatch.setattr(api, 'JOBS', {'cancel-regression': job})
     class EarlyRefusal:
         search_log = []

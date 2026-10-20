@@ -7,10 +7,16 @@ services:
         BASE_IMAGE: ${BASE_IMAGE:-python:3.11-slim}
     image: geoscan-fleet-planner:1.0
     ports:
-      - "8000:8000"
+      - "${PLANNER_BIND_HOST:-0.0.0.0}:8000:8000"
     environment:
       DATA_DIR: /data
       DEM_CACHE_DIR: /data/dem_cache
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+      ASSISTANT_PROVIDER: ${ASSISTANT_PROVIDER:-openrouter}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-qwen/qwen3.8-27b}
+      TOKENATOR_API_KEY: ${TOKENATOR_API_KEY:-}
+      TOKENATOR_MODEL: ${TOKENATOR_MODEL:-gpt-6-luna}
     volumes:
       - planner-data:/data   # история планов и кэш ЦМР
     restart: unless-stopped

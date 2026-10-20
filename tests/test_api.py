@@ -80,7 +80,7 @@ def test_job_progress_export_and_brief():
     import io
     import zipfile
     names = zipfile.ZipFile(io.BytesIO(client.get(f"/api/plans/{pid}/export/zip").content)).namelist()
-    assert f"drones/{d['id']}.kml" in names and "brief.html" in names
+    assert f"drones/{d['id']}.kml" in names and "brief.html" in names and "report.html" in names
 
 
 def test_job_cancel():

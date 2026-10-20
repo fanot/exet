@@ -10,7 +10,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="/static/style.css?v=20260928-2">
+<link rel="stylesheet" href="/static/style.css?v=20261020-6">
+<link rel="stylesheet" href="/static/product.css?v=20261020-2">
 </head>
 <body>
 <div id="app">
@@ -40,10 +41,12 @@
     <div class="segmented" role="radiogroup" aria-label="Критерий оптимизации" id="objective">
       <button role="radio" data-v="time" aria-checked="true" title="Минимизировать время выполнения всей миссии"><span class="ico" data-i="clock"></span><span class="l">Минимум времени</span><span class="s">Время</span></button>
       <button role="radio" data-v="flight" aria-checked="false" title="Минимизировать суммарный налет (износ техники)"><span class="ico" data-i="battery"></span><span class="l">Минимум налета</span><span class="s">Налет</span></button>
+      <button role="radio" data-v="balanced" aria-checked="false" title="Компромисс по времени работ и налёту: уменьшает худшее отставание от лучших найденных значений"><span class="ico" data-i="sliders"></span><span>Баланс</span></button>
     </div>
-    <button id="compare" class="btn btn-ghost" title="Рассчитать оба критерия и сравнить"><span class="ico" data-i="compare"></span><span class="hide-lg">Сравнить</span></button>
+    <button id="compare" class="btn btn-ghost" title="Рассчитать три режима и сравнить"><span class="ico" data-i="compare"></span><span class="hide-lg">Сравнить</span></button>
     <button id="run" class="btn btn-primary" title="Рассчитать план (⌘/Ctrl + Enter)"><span class="ico" data-i="play"></span><span>Рассчитать</span><kbd class="hide-md">⌘↵</kbd></button>
     <div class="icon-group">
+      <button id="assistant-open" class="btn assistant-toggle" aria-expanded="false" aria-controls="assistant"><span class="ico" data-i="sparkle"></span><span>Помощник</span></button>
       <a class="btn btn-icon btn-ghost" href="/docs" target="_blank" rel="noopener" title="REST API (Swagger)"><span class="ico" data-i="code"></span></a>
       <button id="help" class="btn btn-icon btn-ghost" title="Горячие клавиши (?)"><span class="ico" data-i="keyboard"></span></button>
       <button id="theme" class="btn btn-icon btn-ghost" title="Светлая / темная тема"><span class="ico" data-i="moon"></span></button>
@@ -54,12 +57,15 @@
     <aside class="panel" id="panel">
       <nav class="tabs" role="tablist">
         <button role="tab" data-tab="task" aria-selected="true"><span class="ico" data-i="sliders"></span>Задание</button>
-        <button role="tab" data-tab="result" aria-selected="false"><span class="ico" data-i="route"></span>Результат <span class="badge" id="res-badge" hidden></span></button>
+        <button role="tab" data-tab="overview" aria-selected="false"><span class="ico" data-i="file"></span>Обзор</button>
+        <button role="tab" data-tab="result" aria-selected="false"><span class="ico" data-i="route"></span>Полёты <span class="badge" id="res-badge" hidden></span></button>
         <button role="tab" data-tab="history" aria-selected="false"><span class="ico" data-i="history"></span>История</button>
       </nav>
+      <button class="panel-alert" id="panel-alert" type="button" hidden></button>
 
       <!-- ЗАДАНИЕ -->
       <section class="tab-body" id="tab-task">
+        <div class="onboarding" id="first-mission"><div class="eyebrow">ПЕРВАЯ МИССИЯ</div><b>От участка до полётных заданий</b><p>Выберите район, проверьте парк и условия. После расчёта откройте обзор миссии.</p><button class="btn btn-sm" id="guide-start"><span class="ico" data-i="sparkle"></span>Помочь с первым запуском</button></div>
         <div class="scenario-card" id="scenario-card"></div>
 
         <details class="step" open>
@@ -67,16 +73,16 @@
           <div class="step-body" id="fleet"></div>
         </details>
 
-        <details class="step" open>
+        <details class="step">
           <summary><span class="step-n">2</span><span class="step-t">Съемка</span><span class="step-s" id="sum-survey"></span></summary>
           <div class="step-body">
             <div class="label">Тип съемки</div>
             <div class="chips" id="survey_type" role="radiogroup">
-              <button data-v="rgb" aria-checked="true">RGB</button>
-              <button data-v="multispectral" aria-checked="false">Мультиспектр</button>
-              <button data-v="ir" aria-checked="false">ИК</button>
-              <button data-v="lidar" aria-checked="false">Лидар</button>
-              <button data-v="geophysics" aria-checked="false">Геофизика</button>
+              <button data-v="rgb" data-term="RGB" aria-checked="true">RGB</button>
+              <button data-v="multispectral" data-term="МУЛЬТИСПЕКТР" aria-checked="false">Мультиспектр</button>
+              <button data-v="ir" data-term="ИК" aria-checked="false">ИК</button>
+              <button data-v="lidar" data-term="ЛИДАР" aria-checked="false">Лидар</button>
+              <button data-v="geophysics" data-term="ГЕОФИЗИКА" aria-checked="false">Геофизика</button>
             </div>
             <div class="grid2">
               <label class="field"><span class="label">GSD</span>
@@ -84,14 +90,26 @@
               <label class="field"><span class="label" title="Нижняя граница облачности">Облачность от</span>
                 <span class="input-unit"><input type="number" id="cloud" placeholder="нет"><span>м</span></span></label>
             </div>
-            <label class="field"><span class="label">Продольное перекрытие <b id="front-v">70%</b></span>
-              <input type="range" id="front" min="70" max="95" step="any" value="70"></label>
-            <label class="field"><span class="label">Поперечное перекрытие <b id="side-v">50%</b></span>
-              <input type="range" id="side" min="50" max="90" step="any" value="50"></label>
+            <div class="label">Перекрытие снимков <button type="button" class="text-button" id="overlap-reset" title="Вернуть значения каталога для выбранного типа съёмки">По каталогу ↺</button></div>
+            <div class="overlap-grid">
+              <label class="overlap-control">
+                <span class="overlap-caption term" data-term="ПРОДОЛЬНОЕ" tabindex="0">Продольное</span>
+                <span class="overlap-readout"><output id="front-v" for="front">70%</output><span class="auto-value" id="front-auto" title="Значение из каталога выбранного типа съёмки">Авто</span></span>
+                <input type="range" id="front" min="70" max="95" step="any" value="70" aria-label="Продольное перекрытие">
+                <span class="range-scale" aria-hidden="true"><span id="front-min">70%</span><span>95%</span></span>
+              </label>
+              <label class="overlap-control">
+                <span class="overlap-caption term" data-term="ПОПЕРЕЧНОЕ" tabindex="0">Поперечное</span>
+                <span class="overlap-readout"><output id="side-v" for="side">50%</output><span class="auto-value" id="side-auto" title="Значение из каталога выбранного типа съёмки">Авто</span></span>
+                <input type="range" id="side" min="50" max="90" step="any" value="50" aria-label="Поперечное перекрытие">
+                <span class="range-scale" aria-hidden="true"><span id="side-min">50%</span><span>90%</span></span>
+              </label>
+            </div>
+            <button class="field-help" type="button" data-ask="Как GSD и перекрытия влияют на длительность и качество съёмки?">Как это влияет на миссию? <span class="ico" data-i="sparkle"></span></button>
           </div>
         </details>
 
-        <details class="step" open>
+        <details class="step">
           <summary><span class="step-n">3</span><span class="step-t">Условия</span><span class="step-s" id="sum-cond"></span></summary>
           <div class="step-body">
             <div class="wind">
@@ -150,8 +168,8 @@
               <label class="field"><span class="label">Глубина поиска</span>
                 <select id="effort"><option value="fast">Быстро</option><option value="normal" selected>Нормально</option><option value="thorough">Тщательно</option></select></label>
             </div>
-            <div class="hint">«Минимум налета» со сроком — налет минимизируется при ограничении на длительность работ.</div>
-            <label class="field"><span class="label">Стоимость взлёта при минимизации налёта</span><span class="input-unit"><input type="number" id="takeoff_weight" min="0" max="5" step="any" value="0"><span>ч</span></span></label>
+            <div class="hint">«Баланс» ищет компромисс, уменьшая худшее отставание по времени и налёту от лучших найденных значений. Срок задаёт ограничение для плана.</div>
+            <label class="field"><span class="label"><span>Стоимость взлёта в режимах <span class="quoted-term">«Налёт»</span> и <span class="quoted-term">«Баланс»</span></span></span><span class="input-unit"><input type="number" id="takeoff_weight" min="0" max="5" step="any" value="0"><span>ч</span></span></label>
             <button class="btn btn-sm advise-btn" id="advise" title="Сколько бортов из доступного парка нужно, чтобы уложиться в срок"><span class="ico" data-i="sparkle"></span>Подобрать парк к сроку</button>
             <div id="advice"></div>
             <div class="label">Метод поиска параметров плана</div>
@@ -175,6 +193,9 @@
       </section>
 
       <!-- РЕЗУЛЬТАТ -->
+      <section class="tab-body" id="tab-overview" hidden>
+        <div id="overview"><div class="empty"><div class="empty-ico ico" data-i="file"></div><div class="empty-t">Обзор появится после расчёта</div><div class="hint">Условия, высоты, проверки и рекомендации по всей миссии — в одном месте.</div><button class="btn btn-primary" data-navigate="task">Настроить миссию</button></div></div>
+      </section>
       <section class="tab-body" id="tab-result" hidden>
         <div class="empty" id="result-empty">
           <div class="empty-ico ico" data-i="route"></div>
@@ -186,34 +207,51 @@
 
       <!-- ИСТОРИЯ -->
       <section class="tab-body" id="tab-history" hidden>
-        <div id="history"></div>
+        <div id="history-actions"></div>
         <div id="cmp"></div>
+        <div id="history"></div>
       </section>
     </aside>
 
     <main class="stage" id="stage">
       <div id="map" aria-label="Карта"></div>
+      <button class="btn float-btn panel-toggle" id="panel-toggle" type="button" aria-controls="panel" aria-expanded="true" title="Скрыть левую панель"><span class="ico" data-i="chevL"></span>Скрыть панель</button>
 
       <div class="float float-tr" id="layers-box">
-        <button class="btn btn-icon float-btn" id="layers-btn" title="Слои и раскраска карты"><span class="ico" data-i="layers"></span></button>
-        <button class="btn btn-icon float-btn" id="add-site" title="Поставить площадку взлета/посадки кликом по карте"><span class="ico" data-i="sitePlus"></span></button>
-        <div class="layers-pop glass" id="layers-pop" hidden>
-          <div class="label">Подложка</div>
-          <div class="chips small" id="basemap">
+        <button class="btn float-btn map-layers-btn" id="layers-btn" title="Слои и маршруты карты" aria-expanded="false" aria-controls="layers-pop"><span class="ico" data-i="layers"></span>Слои и маршруты</button>
+        <button class="btn float-btn map-layers-btn" id="add-site" type="button" title="Добавить площадку взлёта и посадки кликом по карте" aria-pressed="false"><span class="ico" data-i="sitePlus"></span>Добавить площадку взлёта</button>
+        <div class="layers-pop glass" id="layers-pop" role="dialog" aria-label="Настройки карты" hidden>
+          <div class="layers-head"><div><span class="layers-eyebrow">НАСТРОЙКИ КАРТЫ</span><strong>Слои и маршруты</strong></div><button class="eye" id="layers-close" type="button" aria-label="Закрыть настройки карты"><span class="ico" data-i="x"></span></button></div>
+          <section class="layers-section">
+            <div class="layers-section-title">Вид карты</div>
+            <div class="layers-section-copy">Выберите удобную подложку.</div>
+            <div class="chips small layers-options" id="basemap">
             <button data-v="map" aria-checked="true">Схема</button>
             <button data-v="sat" aria-checked="false">Спутник</button>
             <button data-v="topo" aria-checked="false">Рельеф</button>
-          </div>
-          <div class="label">Раскраска маршрутов</div>
-          <div class="chips small" id="colormode">
-            <button data-v="drone" aria-checked="true">Борта</button>
-            <button data-v="model" aria-checked="false">Типы БВС</button>
-            <button data-v="phase" aria-checked="false">Этапы</button>
-          </div>
-          <div class="label">Слои</div>
-          <div id="overlay-list"></div>
-          <div class="label">Условные обозначения</div>
-          <div class="legend" id="legend"></div>
+            </div>
+          </section>
+          <section class="layers-section">
+            <div class="layers-section-title">Цвет маршрутов</div>
+            <div class="layers-section-copy">Как различать линии на карте.</div>
+            <div class="chips small layers-options" id="colormode">
+              <button data-v="drone" aria-checked="true">По бортам</button>
+              <button data-v="model" aria-checked="false">По типам БВС</button>
+              <button data-v="phase" aria-checked="false">По этапам</button>
+            </div>
+          </section>
+          <section class="layers-section">
+            <div class="layers-section-title">Показать на карте <span class="layers-count" id="overlay-count"></span></div>
+            <div class="layers-section-copy">Включайте только нужные данные.</div>
+            <div id="overlay-list" class="layers-overlays"></div>
+            <label class="layers-overlay zone-labels-control"><span class="layers-overlay-copy"><strong>Подписи зон</strong><small>Плашки «Запретная зона» и «Ограничение»</small></span><input type="checkbox" id="zone-labels" checked><span class="layers-switch" aria-hidden="true"></span></label>
+          </section>
+          <section class="layers-section">
+            <label class="layers-section-title" for="route-focus">Отдельный вылет</label>
+            <div class="layers-section-copy" id="route-focus-hint">После расчёта можно оставить на карте один маршрут.</div>
+            <select id="route-focus" aria-label="Показать отдельный маршрут" disabled><option value="">Все маршруты</option></select>
+          </section>
+          <details class="layers-legend" open><summary>Условные обозначения</summary><div class="legend" id="legend"></div></details>
         </div>
       </div>
 
@@ -254,9 +292,22 @@
             <button data-v="1200" aria-checked="false">×1200</button>
             <button data-v="3600" aria-checked="false">×3600</button>
           </div>
-          <input type="range" id="slider" min="0" max="1000" value="0" aria-label="Время">
+          <div class="timeline-control">
+            <div class="timeline-label"><strong>Время миссии</strong><span id="timeline-next">События появятся после расчёта</span></div>
+            <div class="timeline-track">
+              <input type="range" id="slider" min="0" max="1000" value="0" aria-label="Время миссии">
+              <div id="timeline-markers" class="timeline-markers"></div>
+            </div>
+            <div id="timeline-event-popover" class="timeline-popover" hidden></div>
+          </div>
           <div class="dock-live" id="dock-live"></div>
+          <label class="dock-filter"><span>Борт</span><select id="timeline-drone" aria-label="Фильтр таймлайна по борту"><option value="">Все БПЛА</option></select></label>
+          <button class="btn btn-icon btn-ghost" id="dock-expand" type="button" title="Развернуть таймлайн на всю высоту" aria-label="Развернуть таймлайн на всю высоту" aria-pressed="false"><span class="ico" data-i="expand"></span></button>
           <button class="btn btn-icon btn-ghost" id="dock-toggle" title="Свернуть расписание"><span class="ico" data-i="chev"></span></button>
+        </div>
+        <div class="dock-summary">
+          <div class="progress-copy"><strong id="coverage-percent">Отснято по плану: считаем…</strong><span id="coverage-area">Покрытие всей миссии к выбранному времени</span></div>
+          <div class="timeline-legend" aria-label="Типы событий"><span><i class="event-flight"></i>вылеты</span><span><i class="event-survey"></i>съёмка</span><span><i class="event-obstacle"></i>препятствия рядом</span><span><i class="event-restriction"></i>ограничения</span><span><i class="event-check"></i>проверки</span><span><i class="event-alert"></i>нарушения</span></div>
         </div>
         <div class="gantt" id="gantt"></div>
         <div class="g-tip" id="g-tip" hidden></div>
@@ -272,7 +323,7 @@
         <dt><kbd>Пробел</kbd></dt><dd>Воспроизвести / пауза</dd>
         <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Предыдущий / следующий вылет</dd>
         <dt><kbd>Esc</kbd></dt><dd>Снять выделение, закрыть окна, отменить расчет</dd>
-        <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>Вкладки: задание, результат, история</dd>
+        <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd></dt><dd>Задание, обзор, полёты, история</dd>
         <dt><kbd>F</kbd></dt><dd>Вписать район работ</dd>
         <dt><kbd>?</kbd></dt><dd>Эта подсказка</dd>
       </dl>
@@ -280,7 +331,20 @@
     </div>
   </div>
 </div>
+<aside id="assistant" class="assistant" hidden role="dialog" aria-label="Помощник по миссии">
+  <div class="assistant-head"><div class="assistant-mark"><span class="ico" data-i="sparkle"></span></div><div class="assistant-title"><strong>Помощник по миссии</strong><div class="assistant-model" id="assistant-model">Подключение к модели…</div></div><button class="btn btn-icon btn-ghost" id="assistant-new" aria-label="Новый диалог" title="Новый диалог"><span class="ico" data-i="history"></span></button><button class="btn btn-icon btn-ghost" id="assistant-close" aria-label="Закрыть помощника"><span class="ico" data-i="x"></span></button></div>
+  <div class="assistant-context" id="assistant-context"></div>
+  <div class="assistant-messages" id="assistant-messages" role="log" aria-live="polite" aria-relevant="additions"></div>
+  <button class="assistant-jump" id="assistant-jump" type="button" hidden>К последнему ответу ↓</button>
+  <div class="assistant-suggestions"><button data-ask="Проверь мои текущие настройки и объясни, на что обратить внимание">Проверить настройки</button><button data-ask="Объясни мой план">Разобрать план</button><button data-ask="Что исправить в моём плане и почему?">Найти проблемы</button><button data-ask="Как выбрать режим оптимизации для моей задачи?">Выбрать режим</button></div>
+  <div class="assistant-status" id="assistant-status" role="status"></div>
+  <form id="assistant-form"><label class="sr-only" for="assistant-input">Вопрос помощнику</label><textarea id="assistant-input" rows="2" placeholder="Спросите о настройках или своём плане…" maxlength="4000" autocomplete="off"></textarea><button class="btn btn-primary" id="assistant-send" type="submit" aria-label="Отправить вопрос">↑</button><button class="btn" id="assistant-stop" type="button" aria-label="Остановить ответ" title="Остановить ответ" hidden>■</button></form>
+  <div class="assistant-foot">Enter — отправить · Shift + Enter — новая строка. Настройки и сводка плана передаются в <span id="assistant-provider">сервис модели</span>. Ответы модели нужно проверять.</div>
+</aside>
+<div id="term-tooltip" role="tooltip" hidden></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="/static/app.js?v=20260929-2"></script>
+<script src="/static/app.js?v=20261020-7"></script>
+<script src="/static/product.js?v=20261019-1"></script>
+<script src="/static/assistant.js?v=20261020-3"></script>
 </body>
 </html>

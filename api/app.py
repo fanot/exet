@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -29,6 +29,8 @@ from planner.geo import ScenarioError, merge_scenarios, parse_geojson, parse_kml
 from planner.models import MissionParams
 from planner.optimizer import Planner, PlanningError
 from planner.validate import validate_plan
+from api.sessions import owner, session_middleware
+from api import assistant
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = Path(os.environ.get("DATA_DIR", ROOT / "data"))
@@ -50,6 +52,47 @@ app = FastAPI(
         "длительности — мин или с (в имени поля); расстояния — км; время — ISO 8601."
     ),
 )
+app.middleware("http")(session_middleware)
+
+
+def _owned(plan_id: str) -> bool:
+    """Legacy plans stay on disk, but are never silently shared with visitors."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", plan_id):
+        return False
+    try:
+        return bool(owner.get()) and (PLANS / f"{plan_id}.owner").read_text() == owner.get()
+    except OSError:
+        return False
+
+
+@app.get("/api/session", tags=["Сервис"], summary="Текущая анонимная сессия браузера")
+def current_session():
+    return {"id": owner.get()[:12], "kind": "anonymous", "retention_days": 30}
+
+
+@app.get("/api/assistant/status", tags=["Помощник"], summary="Готовность модели и базы знаний")
+def assistant_status():
+    return assistant.configuration()
+
+
+@app.get("/api/assistant/docs/{slug}", response_class=HTMLResponse, tags=["Помощник"], summary="Документ базы знаний помощника")
+def assistant_document(slug: str):
+    return assistant.document_html(slug)
+
+
+@app.post("/api/assistant/chat", tags=["Помощник"], summary="Ответ помощника потоком SSE")
+async def assistant_chat(payload: assistant.ChatRequest):
+    # Resolve ownership before constructing any prompt or calling the provider.
+    plan = _load(payload.plan_id) if payload.plan_id else None
+    config = assistant.configuration()
+    if config["configuration_error"]:
+        raise HTTPException(503, config["configuration_error"])
+    if not config["configured"]:
+        raise HTTPException(503, "Помощник ещё не подключён. Добавьте API-ключ выбранного сервиса в .env на сервере и перезапустите приложение.")
+    session = owner.get()
+    assistant.reserve(session)
+    return StreamingResponse(assistant.stream_reply(payload, plan, session), media_type="text/event-stream",
+                             headers={"X-Accel-Buffering": "no", "Cache-Control": "no-store"})
 
 
 @app.exception_handler(RequestValidationError)
@@ -149,6 +192,7 @@ def _run_job(job_id: str, scenario, params: MissionParams, scenario_gj: dict):
         with _LOCK:
             if job.get("cancel"):
                 raise Cancelled()
+            (PLANS / f"{res['id']}.owner").write_text(job["owner"], encoding="ascii")
             (PLAN_SCENARIOS / f"{res['id']}.json").write_text(scenario_json, encoding="utf-8")
             (PLANS / f"{res['id']}.json").write_text(plan_json, encoding="utf-8")
             job.update(status="done", progress=1.0, plan_id=res["id"], message="Готово", stage="validate")
@@ -209,14 +253,14 @@ def _status(job: dict) -> JobStatus:
 
 def _start(scenario, params: MissionParams, scenario_gj: dict) -> JobStatus:
     job_id = uuid.uuid4().hex[:10]
-    JOBS[job_id] = {"job_id": job_id, "status": "queued", "progress": 0.0, "message": "В очереди", "plan_id": None, "error": None}
+    JOBS[job_id] = {"job_id": job_id, "owner": owner.get(), "status": "queued", "progress": 0.0, "message": "В очереди", "plan_id": None, "error": None}
     # сценарий сохраняется до расчета: планировщик дописывает в него добавленные площадки
     threading.Thread(target=_run_job, args=(job_id, scenario, params, scenario_gj), daemon=True).start()
     return _status(JOBS[job_id])
 
 
 def _load(plan_id: str) -> dict:
-    if not re.fullmatch(r"[A-Za-z0-9_-]+", plan_id):
+    if not _owned(plan_id):
         raise HTTPException(404, "План не найден")
     p = PLANS / f"{plan_id}.json"
     if not p.exists() or "/" in plan_id or ".." in plan_id:
@@ -282,7 +326,7 @@ def create_advice(req: PlanRequest):
     except ScenarioError as e:
         raise HTTPException(422, str(e))
     job_id = uuid.uuid4().hex[:10]
-    JOBS[job_id] = {"job_id": job_id, "status": "queued", "progress": 0.0, "message": "В очереди", "plan_id": None, "error": None}
+    JOBS[job_id] = {"job_id": job_id, "owner": owner.get(), "status": "queued", "progress": 0.0, "message": "В очереди", "plan_id": None, "error": None}
     threading.Thread(target=_run_advice, args=(job_id, sc, req.params), daemon=True).start()
     return _status(JOBS[job_id])
 
@@ -349,14 +393,14 @@ async def parse_file(files: List[UploadFile] = File(..., description="Файлы
 
 @app.get("/api/jobs/{job_id}", response_model=JobStatus, tags=["Планирование"], summary="Статус расчета")
 def job(job_id: str):
-    if job_id not in JOBS:
+    if job_id not in JOBS or JOBS[job_id].get("owner") != owner.get():
         raise HTTPException(404, "Задача не найдена")
     return _status(JOBS[job_id])
 
 
 @app.post("/api/jobs/{job_id}/cancel", response_model=JobStatus, tags=["Планирование"], summary="Отменить расчет")
 def cancel_job(job_id: str):
-    if job_id not in JOBS:
+    if job_id not in JOBS or JOBS[job_id].get("owner") != owner.get():
         raise HTTPException(404, "Задача не найдена")
     with _LOCK:
         if JOBS[job_id]["status"] not in ("done", "error", "cancelled"):
@@ -368,6 +412,8 @@ def cancel_job(job_id: str):
 def plans():
     out = []
     for f in sorted(PLANS.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        if not _owned(f.stem):
+            continue
         try:
             r = json.loads(f.read_text(encoding="utf-8"), parse_constant=lambda _: None)
             if not isinstance(r, dict) or r.get("id") != f.stem:
@@ -404,6 +450,7 @@ def delete_plan(plan_id: str):
     _load(plan_id)
     (PLANS / f"{plan_id}.json").unlink()
     (PLAN_SCENARIOS / f"{plan_id}.json").unlink(missing_ok=True)
+    (PLANS / f"{plan_id}.owner").unlink(missing_ok=True)
     return {"deleted": plan_id}
 
 
@@ -453,6 +500,25 @@ def brief(plan_id: str, drone: Optional[str] = Query(None, description="Борт
     if drone and not any(d["id"] == drone for d in r.get("drones", [])):
         raise HTTPException(404, f"Борт {drone} не найден в плане")
     return HTMLResponse(to_brief_html(r, drone))
+
+
+@app.get("/api/plans/{plan_id}/report", tags=["Планы"], summary="Общий отчет о рассчитанной миссии")
+def report(plan_id: str):
+    from planner.report import mission_report
+    return mission_report(_load(plan_id))
+
+
+@app.get("/api/plans/{plan_id}/progress", tags=["Планы"], summary="Покрытие площади по времени расчётного плана")
+def progress(plan_id: str):
+    from planner.progress import coverage_timeline
+    return coverage_timeline(_load(plan_id))
+
+
+@app.get("/api/plans/{plan_id}/report/print", response_class=HTMLResponse, tags=["Экспорт"],
+         summary="Общий отчет для печати или сохранения в PDF из браузера")
+def report_print(plan_id: str):
+    from planner.report import report_html
+    return HTMLResponse(report_html(_load(plan_id)))
 
 
 @app.post("/api/validate", tags=["Проверка"],

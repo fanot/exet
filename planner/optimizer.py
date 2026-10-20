@@ -67,6 +67,7 @@ class Planner:
         self.warnings: List[str] = []
         self.recs: List[dict] = []
         self.search_log: List[dict] = []
+        self.balance_reference = None
 
     # ------------------------------------------------------------------ подготовка
     def prepare(self):
@@ -547,12 +548,7 @@ class Planner:
         makespan = (end + 600 - self.t0) if end > 0 else 0.0
         n_sorties = sum(len(v) for v in sorties.values())
         bad_len = sum(b[3] for b in bad)
-        if self.p.objective == "time":
-            score = makespan + 1e-3 * flight
-        else:
-            score = flight + n_sorties * self.p.takeoff_weight_h * 3600 + 1e-3 * makespan
-            if self.p.deadline_h and makespan > self.p.deadline_h * 3600:
-                score += (makespan - self.p.deadline_h * 3600) * 50
+        score = self._mission_score(makespan, flight, n_sorties)
         score += bad_len * 100.0 + lost * 2.0
         if scheduling_error:
             score += 1e15
@@ -598,6 +594,9 @@ class Planner:
             r = self.evaluate(dict(zip(keys, sh)), cols)
             if best is None or r["score"] < best["score"]:
                 best = r
+        if self.p.objective == "balanced":
+            self._calibrate_balance()
+            best = min(self.search_log, key=lambda r: r["score"])
         # этап 3: локальное уточнение долей (в обоих режимах — пул байесовского режима включает все варианты сетки)
         if len(keys) > 1 and effort != "fast":
             step = 0.05 if len(keys) == 2 else 0.1
@@ -624,7 +623,7 @@ class Planner:
         # в пул финального отбора — лучшие варианты КАЖДОГО метода: быстрая оценка не видит переносов
         # вылетов на следующий световой день, поэтому решает только полное построение
         seen, cands = set(), []
-        per_method = 1 if effort == "fast" else 3
+        per_method = 3 if self.p.objective == "balanced" else (1 if effort == "fast" else 3)
         for method in ("grid", "bayes"):
             n = 0
             for r in sorted((r for r in self.search_log if r.get("method", "grid") == method and not r.get("scheduling_error")), key=lambda r: r["score"]):
@@ -698,17 +697,52 @@ class Planner:
         self.bayes_stats = {"trials": n_trials, "grid_best_score": round(best["score"], 1), "bayes_best_score": round(cand["score"], 1)}
         return cand if cand["score"] <= best["score"] else best
 
+    def _mission_score(self, makespan, flight, n_sorties):
+        if self.p.objective == "balanced" and self.balance_reference:
+            ref = self.balance_reference
+            # Freeze the grid ranges for local search, TPE and final dispatch.
+            # A constant grid objective has zero regret; use its positive
+            # baseline as a fallback scale for later candidates that differ.
+            time_range = ref["time_max_s"] - ref["time_s"]
+            flight_range = ref["flight_max_s"] - ref["flight_s"]
+            t = (makespan - ref["time_s"]) / (time_range or ref["time_s"])
+            f = (flight - ref["flight_s"]) / (flight_range or ref["flight_s"])
+            # Do not clip: later improvements or overruns must still affect
+            # ranking. Keep the existing seconds scale for additive penalties.
+            score = (max(0.5 * t, 0.5 * f) + 0.01 * (t + f)) * ref["time_s"]
+        elif self.p.objective in ("time", "balanced"):
+            score = makespan + 1e-3 * flight
+        else:
+            score = flight + 1e-3 * makespan
+        if self.p.objective != "time":
+            score += n_sorties * self.p.takeoff_weight_h * 3600
+        if self.p.objective != "time" and self.p.deadline_h and makespan > self.p.deadline_h * 3600:
+            score += (makespan - self.p.deadline_h * 3600) * 50
+        return score
+
+    def _calibrate_balance(self):
+        valid = [r for r in self.search_log if not r.get("scheduling_error") and r["flight"] > 0 and r["makespan"] > 0]
+        feasible = [r for r in valid if r["bad_m"] < 1]
+        pool = feasible or valid
+        if not pool:
+            return
+        penalties = [r["score"] - self._mission_score(r["makespan"], r["flight"], r["n_sorties"]) for r in self.search_log]
+        self.balance_reference = {"time_s": min(r["makespan"] for r in pool),
+                                  "time_max_s": max(r["makespan"] for r in pool),
+                                  "flight_s": min(r["flight"] for r in pool),
+                                  "flight_max_s": max(r["flight"] for r in pool),
+                                  "source": "feasible_grid" if feasible else "partial_grid",
+                                  "method": "augmented_chebyshev", "time_weight": 0.5,
+                                  "tie_break_weight": 0.01}
+        for r, penalty in zip(self.search_log, penalties):
+            r["score"] = self._mission_score(r["makespan"], r["flight"], r["n_sorties"]) + penalty
+
     def _actual_score(self, assigned):
         if not assigned:
             return float("inf")
         end = max(a.end for a in assigned) + 600
         flight = sum(a.end - a.start for a in assigned)
-        if self.p.objective == "time":
-            return end - self.t0 + 1e-3 * flight
-        sc = flight + len(assigned) * self.p.takeoff_weight_h * 3600 + 1e-3 * (end - self.t0)
-        if self.p.deadline_h and end - self.t0 > self.p.deadline_h * 3600:
-            sc += (end - self.t0 - self.p.deadline_h * 3600) * 50
-        return sc
+        return self._mission_score(end - self.t0, flight, len(assigned))
 
     def _dispatch_cfg(self, cfg, p0, p1):
         ev = self.evaluate(cfg["shares"], {k: float(v) for k, v in cfg["cols"].items()}, keep=True, cell_scale=cfg.get("cell_scale", 1.0))
@@ -925,6 +959,7 @@ class Planner:
                           "note": m.maintenance_note})
         summary = {
             "objective": self.p.objective, "energy_model": self.p.energy_model, "wind_model": self.p.wind_model,
+            "balance_reference": self.balance_reference,
             "airspace_mode": self.p.airspace_mode, "ceiling_agl_m": round(self.ceiling, 1),
             "mission_start_iso": _iso(self.t0, tz), "first_takeoff_iso": _iso(start, tz), "mission_end_iso": _iso(end, tz),
             "makespan_h": round((end - self.t0) / 3600, 2), "flight_hours": round(flight_s / 3600, 2),

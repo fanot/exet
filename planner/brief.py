@@ -221,7 +221,7 @@ def to_brief_html(result: dict, drone_id: Optional[str] = None) -> str:
     passed = sum(1 for c in checks if c.get("passed"))
     title = f"Полетное задание{' — ' + drone_id if drone_id else ''}"
     head = (f'<h1>{escape(title)}</h1><div class="sub">План {escape(result["id"])} · {escape(result.get("scenario_name") or "")} · '
-            f'{"минимум времени" if sm.get("objective") == "time" else "минимум налета"} · '
+            f'{ {"time": "минимум времени", "flight": "минимум налета", "balanced": "баланс"}.get(sm.get("objective"), "—")} · '
             f'время местное ({datetime.fromisoformat(sm["mission_start_iso"]).strftime("UTC%z")})</div>')
     kv = (f'<div class="kv"><div><b>{_num(sm.get("makespan_h"), 1)} ч</b><span>время работ всей группы</span></div>'
           f'<div><b>{_num(sm.get("flight_hours"), 1)} ч</b><span>суммарный налет</span></div>'

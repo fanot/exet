@@ -6,6 +6,7 @@ API history is isolated in pytest temporary directories.
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib
 import io
 import json
@@ -37,7 +38,13 @@ def qa_client(tmp_path, monkeypatch):
     monkeypatch.setattr(api, "PLAN_SCENARIOS", scenarios)
     monkeypatch.setattr(api, "JOBS", {})
     with TestClient(api.app, raise_server_exceptions=False) as client:
+        client.get("/api/session")
         yield client, api
+
+
+def own_plan(client, api, plan_id):
+    digest = hashlib.sha256(client.cookies.get("gfp_session").encode()).hexdigest()
+    (api.PLANS / f"{plan_id}.owner").write_text(digest)
 
 
 @pytest.fixture(scope="module")
@@ -329,6 +336,7 @@ def test_duplicate_site_names_must_be_rejected(qa_client):
 def test_damaged_history_entry_must_not_break_list(qa_client):
     client, api = qa_client
     (api.PLANS / "damaged.json").write_text('{"summary": {}}', encoding="utf-8")
+    own_plan(client, api, "damaged")
     response = client.get("/api/plans")
     assert response.status_code == 200
     assert response.json() == []
@@ -352,6 +360,7 @@ def test_partial_or_unvalidated_plan_cannot_be_exported(qa_client, basic_plan, s
     r.update(id="partial", status=status)
     r["validation"]["passed"] = passed
     (api.PLANS / "partial.json").write_text(json.dumps(r), encoding="utf-8")
+    own_plan(client, api, "partial")
     for suffix in ["export/kml", "export/geojson", "export/csv", "export/zip", "export/qgc?sortie=1", "brief"]:
         assert client.get(f"/api/plans/partial/{suffix}").status_code == 409
 
@@ -360,6 +369,7 @@ def test_partial_or_unvalidated_plan_cannot_be_exported(qa_client, basic_plan, s
 def test_history_skips_invalid_records(qa_client, entry):
     client, api = qa_client
     (api.PLANS / "broken.json").write_text(json.dumps(entry), encoding="utf-8")
+    own_plan(client, api, "broken")
     assert client.get("/api/plans").json() == []
 
 

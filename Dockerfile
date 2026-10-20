@@ -8,6 +8,7 @@ COPY planner ./planner
 COPY api ./api
 COPY scenarios ./scenarios
 COPY scripts ./scripts
+COPY docs/*.md ./docs/
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health')"
 CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000"]
