@@ -107,4 +107,4 @@ py -3.11 -m venv .venv
 - [docs/ZONE_FORMAT.md](docs/ZONE_FORMAT.md) — предложенный формат высот и времени действия зон ограничений; как читается формат организаторов
 - [docs/AIRSPACE_MODES.md](docs/AIRSPACE_MODES.md) — режимы воздушного пространства: с планом полета (до 700 м) и без плана полета по ФП ИВП (до 150 м, прямая видимость)
 - [docs/ENERGY_MODEL.md](docs/ENERGY_MODEL.md) — модель расхода АКБ, откалиброванная по открытой телеметрии (ML)
-- [docs/Geoscan_Fleet_Planner.pptx](docs/Geoscan_Fleet_Planner.pptx) — презентация для защиты
+- [docs/Geoscan_Fleet_Planner.pptx](docs/Geoscan_Fleet_Planner.pptx) — презентация для защиты (исходник: `docs/presentation/build.js`)
